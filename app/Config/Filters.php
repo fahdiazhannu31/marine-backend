@@ -12,6 +12,9 @@ use CodeIgniter\Filters\InvalidChars;
 use CodeIgniter\Filters\PageCache;
 use CodeIgniter\Filters\PerformanceMetrics;
 use CodeIgniter\Filters\SecureHeaders;
+use Myth\Auth\Filters\LoginFilter; // tambahkan ini
+use Myth\Auth\Filters\PermissionFilter; // tambahkan ini
+use Myth\Auth\Filters\RoleFilter; // tambahkan ini
 
 class Filters extends BaseFilters
 {
@@ -34,6 +37,9 @@ class Filters extends BaseFilters
         'forcehttps'    => ForceHTTPS::class,
         'pagecache'     => PageCache::class,
         'performance'   => PerformanceMetrics::class,
+        'login' => LoginFilter::class, // tambahkan ini
+        'role' => RoleFilter::class, // tambahkan ini
+        'permission' => PermissionFilter::class // tambahkan ini
     ];
 
     /**

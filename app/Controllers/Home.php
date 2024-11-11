@@ -9,8 +9,14 @@ class Home extends BaseController
     {
         helper('form');
     }
+    
     public function index(): string
     {
-        return view('welcome_message');
+        return view('users/index');
+    }
+
+    public function register()
+    {
+        return view('auth/register');
     }
 }
