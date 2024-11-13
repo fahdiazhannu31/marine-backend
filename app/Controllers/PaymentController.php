@@ -20,7 +20,8 @@ use Endroid\QrCode\RoundBlockSizeMode;
 use Endroid\QrCode\Writer\PngWriter;
 use Endroid\QrCode\Writer\ValidationException;
 use CodeIgniter\API\ResponseTrait;
-
+use Xendit\Invoice\NotificationChannel;
+use Xendit\Invoice\NotificationPreference;
 
 class PaymentController extends BaseController
 {
@@ -45,7 +46,7 @@ class PaymentController extends BaseController
         $amount = (int)$this->request->getPost('amount');
 
         // Get the payer's email from the post data or use a default one
-        $payer_email = isset($post['payer_email']) ? $post['payer_email'] : 'fahdiazhannu31@gmail.com';
+        $payer_email = 'fahdiazhannu31@gmail.com';
 
         try {
             // Prepare parameters for Xendit API
@@ -54,9 +55,21 @@ class PaymentController extends BaseController
                 'payer_email' => $payer_email,
                 'description' => 'Pembelian tiket Rute ' . $rute . '<br> Sejumlah ' . $jml_pax . ' PAX',
                 'amount' => $amount, // Ensure amount is an integer
+                'customer' => [
+                    'given_names' => 'Fahdi',
+                    'surname' => 'Azhannu',
+                    'email' => 'fahdiazhannu31@gmail.com',
+                    'mobile_number' => '+6281398744517',
+                ],
+                'customer_notification_preference' => [
+                    'invoice_created' => ['email', 'whatsapp'],
+                    'invoice_reminder' => ['email', 'whatsapp'],
+                    'invoice_paid' => ['email', 'whatsapp']
+                ],
                 'success_redirect_url' => base_url('/payment-success'),
                 'failure_redirect_url' => base_url('/payment-failure')
             ];
+
 
             // Attempt to create an invoice using the Xendit API
             $invoice = $apiInstance->createInvoice($params);
