@@ -97,12 +97,13 @@ a {
 
         .hero {
           background: url("../images/jumbotron.webp") no-repeat center center;
-          background-size: cover; /* Agar gambar menutupi seluruh hero */
-          padding: calc(4rem - 30px) 0 0 0; /* Padding agar elemen tidak terlalu rapat */
-          margin-top: 120px; /* Tambahkan margin-top yang cukup besar untuk menghindari navbar fixed-top */
-          position: relative; /* Agar gambar hero bisa disesuaikan lebih lanjut */
-          z-index: 1; /* Pastikan gambar hero berada di bawah elemen lain seperti teks */
-        }
+          background-size: cover;
+          height: 550px; /* Sesuaikan dengan tinggi yang diinginkan */
+          padding: 0; /* Mengurangi padding jika tidak perlu */
+          margin-top: 120px;
+          position: relative;
+          z-index: 1;
+      }
         
         @media (min-width: 768px) {
           .hero {
@@ -212,12 +213,12 @@ a {
       background: #314d43;
       border-color: #314d43; }
   .btn.btn-secondary {
-    color: #2f2f2f;
-    background: #f9bf29;
-    border-color: #f9bf29; }
+    color: #ffff;
+    background: rgba(255, 52, 76, 0.78);
+    border-color: rgba(255, 52, 76, 0.78); }
     .btn.btn-secondary:hover {
-      background: #f8b810;
-      border-color: #f8b810; }
+      background: rgba(255, 52, 76, 0.78);
+      border-color: rgba(255, 52, 76, 0.78); }
   .btn.btn-white-outline {
     background: transparent;
     border-width: 2px;
@@ -228,6 +229,18 @@ a {
 
 .section-title {
   color: #2f2f2f; }
+
+  .btn-whatsapp {
+    padding: 5px 15px; /* Mengurangi padding untuk membuat tombol lebih kecil */
+    font-size: 14px; /* Mengurangi ukuran font */
+    display: inline-flex;
+    align-items: center;
+}
+
+.btn-whatsapp i {
+    font-size: 16px; /* Menyelaraskan ukuran ikon dengan teks */
+    margin-right: 5px; /* Memberikan sedikit jarak antara ikon dan teks */
+}
 
 .product-section {
   padding: 7rem 0; }

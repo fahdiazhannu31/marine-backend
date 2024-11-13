@@ -22,7 +22,7 @@
 
 </head>
 
-<body class="bg-gradient-primary">
+<body class="bg-gradient-primary" style="background-image: url('<?= base_url () ?>assets_users/images/jumbotron.webp'); background-size: cover; background-position: center center; background-repeat: no-repeat;">
 
     <div class="container">
     <div class="row justify-content-center">
@@ -33,9 +33,14 @@
                     <div class="col-lg">
                         <div class="p-5">
                             <div class="text-center">
-                                <h1 class="h4 text-gray-900 mb-4">Create an Account!</h1>
+                                <img src="<?= base_url() ?>assets_users/images/logo.webp" width="50%">
+                                <h1 class="h4 text-gray-900 mb-3 mt-5"><?=lang('Auth.register')?></h1>
                             </div>
-                            <form class="user">
+
+                            <?= view('Myth\Auth\Views\_message_block') ?>
+                            
+                            <form action="<?= url_to('register') ?>" method="post" class="user">
+                            <?= csrf_field() ?>
                                 <!-- <div class="form-group row">
                                     <div class="col-sm-6 mb-3 mb-sm-0">
                                         <input type="text" class="form-control form-control-user" id="exampleFirstName"
@@ -46,27 +51,62 @@
                                             placeholder="Last Name">
                                     </div>
                                 </div> -->
-                                <div class="form-group">
-                                    <input type="text" class="form-control form-control-user" id="exampleInputUsername"
-                                        placeholder="Username">
+                                <div class="form-group row">
+                                <div class="col-sm-6 mb-3 mb-sm-0">
+                                    <input 
+                                        type="text" 
+                                        class="form-control form-control-user <?php if (session('errors.fullname')) : ?>is-invalid<?php endif ?>" 
+                                        name="fullname"
+                                        placeholder="fullname" 
+                                        value="<?= old('fullname') ?>">
+                                </div>
+                                <div class="col-sm-6">
+                                    <input 
+                                        type="text" 
+                                        class="form-control form-control-user <?php if (session('errors.phone')) : ?>is-invalid<?php endif ?>" 
+                                        name="phone"
+                                        placeholder="phone" 
+                                        value="<?= old('phone') ?>">
+                                </div>
                                 </div>
                                 <div class="form-group">
-                                    <input type="email" class="form-control form-control-user" id="exampleInputEmail"
-                                        placeholder="Email Address">
+                                    <input 
+                                        type="text" 
+                                        class="form-control form-control-user <?php if (session('errors.username')) : ?>is-invalid<?php endif ?>" 
+                                        name="username"
+                                        placeholder="<?=lang('Auth.username')?>" 
+                                        value="<?= old('username') ?>">
+                                </div>
+                                <div class="form-group">
+                                    <input 
+                                        type="email" 
+                                        class="form-control form-control-user <?php if (session('errors.email')) : ?>is-invalid<?php endif ?>" 
+                                        name="email"
+                                        placeholder="<?=lang('Auth.email')?>" 
+                                        value="<?= old('email') ?>">
+                                    <small id="emailHelp" class="form-text text-muted"> <?=lang('Auth.weNeverShare')?></small>
                                 </div>
                                 <div class="form-group row">
                                     <div class="col-sm-6 mb-3 mb-sm-0">
-                                        <input type="password" class="form-control form-control-user"
-                                            id="exampleInputPassword" placeholder="Password">
+                                        <input 
+                                            type="password" 
+                                            class="form-control form-control-user <?php if (session('errors.password')) : ?>is-invalid<?php endif ?>"
+                                            name="password"
+                                            placeholder="<?=lang('Auth.password')?>" 
+                                            autocomplete="off">
                                     </div>
                                     <div class="col-sm-6">
-                                        <input type="password" class="form-control form-control-user"
-                                            id="exampleRepeatPassword" placeholder="Repeat Password">
+                                        <input 
+                                            type="password" 
+                                            class="form-control form-control-user <?php if (session('errors.pass_confirm')) : ?>is-invalid<?php endif ?>" 
+                                            name="pass_confirm"
+                                            placeholder="<?=lang('Auth.repeatPassword')?>" 
+                                            autocomplete="off">
                                     </div>
                                 </div>
-                                <a href="login.html" class="btn btn-primary btn-user btn-block">
-                                    Register Account
-                                </a>
+                                <button type="submit" class="btn btn-user btn-block" style="background-color: rgba(255, 52, 76, 0.78); color:black">
+                                    <?=lang('Auth.register')?>
+                                </button>
                                 <!-- <hr>
                                 <a href="index.html" class="btn btn-google btn-user btn-block">
                                     <i class="fab fa-google fa-fw"></i> Register with Google
@@ -79,8 +119,8 @@
                             <!-- <div class="text-center">
                                 <a class="small" href="forgot-password.html">Forgot Password?</a>
                             </div> -->
-                            <div class="text-center">
-                                <a class="small" href="login.html">Already have an account? Login!</a>
+                            <div class="text-center"> 
+                                <a class="small" href="<?= url_to('login') ?>"> <?=lang('Auth.alreadyRegistered')?> <?=lang('Auth.signIn')?> </a>
                             </div>
                         </div>
                     </div>
