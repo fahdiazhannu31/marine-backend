@@ -41,4 +41,24 @@ class Admin extends BaseController
 
         return view('admin/detailuser', $data);
     }
+
+    public function crudlistpackage(): string
+    {
+        return view('admin/crudlistpackage');
+    }
+
+    public function crudhome(): string
+    {
+        return view('admin/crudhome');
+    }
+
+    public function crudaboutus(): string
+    {
+        return view('admin/crudaboutus');
+    }
+
+    public function crudfooter(): string
+    {
+        return view('admin/crudfooter');
+    }
 }
