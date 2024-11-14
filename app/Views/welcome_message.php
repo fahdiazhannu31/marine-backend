@@ -22,7 +22,8 @@
 
 <body>
     <div class="container mt-5">
-        <h2 class="text-center">Create Payment</h2>
+        <h2 class="text-center">Create Payment
+        </h2>
 
         <form action="<?= base_url('payments') ?>" method="POST">
             <!-- CSRF Token -->
@@ -35,9 +36,11 @@
                     <option value="10000" data-nama-rute="Pulau Sepa">Rute A</option>
                 </select>
             </div>
-
             <!-- Hidden field for Route Name -->
             <input type="hidden" name="nama_rute" id="nama_rute" value="Pulau Sepa">
+            <input type="hidden" name="fullname" id="fullname" value="<?= user()->fullname; ?>">
+            <input type="hidden" name="email" id="email" value="<?= user()->email; ?>">
+            <input type="hidden" name="phone" id="phone" value="<?= user()->phone; ?>">
 
             <!-- Number of Pax (Seats) Input -->
             <div class="form-group">

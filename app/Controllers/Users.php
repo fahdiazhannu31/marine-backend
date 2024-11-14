@@ -24,4 +24,9 @@ class Users extends BaseController
     {
         return view('users/aboutus');
     }
+
+    public function indextwo(): string
+    {
+        return view('welcome_message');
+    }
 }

@@ -1,4 +1,6 @@
-<?php namespace Config;
+<?php
+
+namespace Config;
 
 use CodeIgniter\Config\BaseConfig;
 use Myth\Auth\Config\Auth as AuthConfig;
@@ -6,7 +8,7 @@ use Myth\Auth\Config\Auth as AuthConfig;
 class Auth extends AuthConfig
 {
 
-     /**
+    /**
      * --------------------------------------------------------------------
      * Require Confirmation Registration via Email
      * --------------------------------------------------------------------
@@ -17,5 +19,11 @@ class Auth extends AuthConfig
      * @var string|null Name of the ActivatorInterface class
      */
     public $requireActivation = null;
-
+    public $views = [
+        'login'       => 'App\Views\Auth\login',
+        'register'    => 'App\Views\Auth\register',
+        'forgot'      => 'Myth\Auth\Views\forgot',
+        'reset'       => 'Myth\Auth\Views\reset',
+        'emailForgot' => 'Myth\Auth\Views\emails\forgot',
+    ];
 }

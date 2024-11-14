@@ -36,3 +36,4 @@ $routes->post('/generate-qrcode', 'PaymentController::generateQR');
 $routes->post('/validate-qrcode', 'PaymentController::validateQRCode');
 $routes->get('/scan-qrcode', 'PaymentController::scanQRCode');
 $routes->post('qrcode_scanner/attendance', 'PaymentController::validateQRCode');
+$routes->get('/indextwo', 'Users::indextwo');

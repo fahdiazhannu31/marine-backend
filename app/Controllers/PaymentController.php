@@ -44,9 +44,16 @@ class PaymentController extends BaseController
         $jml_pax = (int)$this->request->getPost('jml_pax');
         $rute = $this->request->getPost('nama_rute');
         $amount = (int)$this->request->getPost('amount');
+        $phone = $this->request->getPost('phone');
+        $email = $this->request->getPost('email');
+        // Split fullname into given_names and surname
+        $fullname = $this->request->getPost('fullname');
+        $names = explode(' ', $fullname, 2); // Membagi berdasarkan spasi pertama
+        $given_names = $names[0]; // Nama depan
+        $surname = isset($names[1]) ? $names[1] : ''; // Nama belakang, jika ada
 
         // Get the payer's email from the post data or use a default one
-        $payer_email = 'fahdiazhannu31@gmail.com';
+        $payer_email = $this->request->getPost('email');
 
         try {
             // Prepare parameters for Xendit API
@@ -56,10 +63,10 @@ class PaymentController extends BaseController
                 'description' => 'Pembelian tiket Rute ' . $rute . '<br> Sejumlah ' . $jml_pax . ' PAX',
                 'amount' => $amount, // Ensure amount is an integer
                 'customer' => [
-                    'given_names' => 'Fahdi',
-                    'surname' => 'Azhannu',
-                    'email' => 'fahdiazhannu31@gmail.com',
-                    'mobile_number' => '+6281398744517',
+                    'given_names' => $given_names,
+                    'surname' => $surname,
+                    'email' => $email,
+                    'mobile_number' => $phone,
                 ],
                 'customer_notification_preference' => [
                     'invoice_created' => ['email', 'whatsapp'],
