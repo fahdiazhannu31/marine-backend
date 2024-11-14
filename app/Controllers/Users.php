@@ -4,6 +4,15 @@ namespace App\Controllers;
 
 class Users extends BaseController
 {
+    public function indexnonlogin(): string
+    {
+        return view('users/indexnonlogin');
+    }
+
+    public function aboutusnonlogin(): string
+    {
+        return view('users/aboutusnonlogin');
+    }
 
     public function index(): string
     {
