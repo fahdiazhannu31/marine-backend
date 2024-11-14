@@ -28,6 +28,10 @@ $routes->group('', ['filter' => 'role:users'], function($routes) {
 $routes->group('', ['filter' => 'role:admin'], function($routes) {
     $routes->get('/admin', 'Admin::index');
     $routes->get('/admin/(:num)', 'Admin::detailuser/$1');
+    $routes->get('/crudlistpackage', 'Admin::crudlistpackage');
+    $routes->get('/crudhome', 'Admin::crudhome');
+    $routes->get('/crudaboutus', 'Admin::crudaboutus');
+    $routes->get('/crudfooter', 'Admin::crudfooter');
     // $routes->get('/Admin/index', 'Admin::index');
 });
 

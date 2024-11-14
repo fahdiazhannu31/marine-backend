@@ -96,7 +96,7 @@
                         <button class="btn btn-white border border-secondary px-3" type="button" id="button-addon1" data-mdb-ripple-color="dark">
                         <i class="fas fa-minus"></i>
                         </button>
-                        <input type="text" class="form-control text-center border border-secondary" placeholder="14" aria-label="Example text with button addon" aria-describedby="button-addon1" id="quantity-input" />
+                        <input type="text" class="form-control text-center border border-secondary" placeholder="0" aria-label="Example text with button addon" aria-describedby="button-addon1" id="quantity-input" />
                         <button class="btn btn-white border border-secondary px-3" type="button" id="button-addon2" data-mdb-ripple-color="dark">
                         <i class="fas fa-plus"></i>
                         </button>
