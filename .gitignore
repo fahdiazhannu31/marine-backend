@@ -1,6 +1,26 @@
-# Ignore the vendor directory
-vendor/
-writable/
-# Ignore environment files
-
+# Environment
 .env
+
+# Dependencies
+/vendor/
+
+# CodeIgniter writable
+/writable/cache/*
+/writable/debugbar/*
+/writable/logs/*
+/writable/session/*
+/writable/uploads/*
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# PHP
+.phpunit.result.cache

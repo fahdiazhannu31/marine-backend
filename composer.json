@@ -14,7 +14,10 @@
         "codeigniter4/framework": "^4.0",
         "endroid/qr-code": "^5.1",
         "myth/auth": "^1.2",
+        "phpoffice/phpspreadsheet": "^5.9",
         "ramsey/uuid": "^4.7",
+        "setasign/fpdf": "^1.8",
+        "tecnickcom/tcpdf": "^6.7",
         "xendit/xendit-php": "^6.0"
     },
     "require-dev": {

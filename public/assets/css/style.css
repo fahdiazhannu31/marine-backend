@@ -1,0 +1,79 @@
+.seat {
+    width: 40px;
+    height: 40px;
+    background-color: #007bff;
+    color: white;
+    border-radius: 8px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 5px;
+    cursor: pointer;
+    font-size: 10px;
+}
+
+ /* Seat colors */
+ .seat-booked-current {
+    background-color: rgb(66, 66, 237) !important;
+    color: white !important;
+}
+
+.seat-booked-other {
+    background-color: rgb(255, 78, 78) !important;
+    color: white !important;
+}
+
+.seat-available {
+    background-color: rgb(10, 224, 10) !important;
+}
+
+.aisle {
+    width: 20px !important;
+}
+
+.vertical-divider {
+    width: 2px;
+    height: 100%;
+    background-color: #ddd;
+}
+
+.seat-label {
+    display: inline-block;
+    position: relative;
+}
+
+.seat-checkbox {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.seat-checkbox:checked + .seat {
+    background-color: #6f706f !important; /* Warna hijau saat dipilih */
+    border: 2px solid #fff;
+}
+
+.up-down {
+    margin-bottom: 150px;
+}
+
+
+.ship-container {
+    width: 400px;
+    height: 800px;
+    border: 5px solid rgb(160, 160, 160);
+    border-top-left-radius: 100%;
+    border-top-right-radius: 100%;
+    border-bottom-right-radius: 30%;
+    border-bottom-left-radius: 30%;
+    display: flex; /* Menggunakan Flexbox */
+    justify-content: center; /* Horizontal center */
+    align-items: center; /* Vertical center */
+}
+.container-in {
+    display: flex; 
+    justify-content: center; /* Center horizontally */
+    align-items: center; /* Center vertically */
+    min-height: 100vh; /* Full screen height */
+}
