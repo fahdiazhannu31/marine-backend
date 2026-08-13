@@ -1146,11 +1146,11 @@ class ManifestUploadController extends ApiController
         $origin      = $upload['origin']       ?? '';
         $destination = $upload['destination']  ?? '';
 
-        // ── Boat brand color ─────────────────────────────────────────
+        // ── Boat brand color ─────
         $boatColors = [
             'la luna'   => [24, 0, 173],
             'la vela'   => [191, 0, 0],
-            'la brisa'  => [255, 87, 208],
+            'labrisa'  => [255, 87, 208],
             'mola mola' => [255, 145, 77],
             'mola-mola' => [255, 145, 77],
             'la casa'   => [167, 122, 255],
@@ -2916,7 +2916,7 @@ public function boardingPass(int $uploadId)
         $boatColorsOld = [
             'la luna'   => [24, 0, 173],
             'la vela'   => [191, 0, 0],
-            'la brisa'  => [255, 87, 208],
+            'labrisa'  => [255, 87, 208],
             'mola mola' => [255, 145, 77],
             'mola-mola' => [255, 145, 77],
             'la casa'   => [167, 122, 255],
@@ -3506,7 +3506,7 @@ public function boardingPass(int $uploadId)
         $boatColors = [
             'la luna'   => 'FF1800AD',
             'la vela'   => 'FFBF0000',
-            'la brisa'  => 'FFFF57D0',
+            'labrisa'  => 'FFFF57D0',
             'mola mola' => 'FFFF914D',
             'mola-mola' => 'FFFF914D',
             'la casa'   => 'FFA77AFF',
