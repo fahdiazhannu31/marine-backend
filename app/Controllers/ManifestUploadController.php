@@ -1113,13 +1113,285 @@ class ManifestUploadController extends ApiController
     // ═══════════════════════════════════════════════════════════════════
     // BAGGAGE TAG PDF
     // GET /api/admin/manifest/baggage-tag-pdf/{id}
-    // Streams a 100×150mm portrait PDF tag — one page per bag count.
+    // Streams an 85.6×54mm landscape PDF tag (credit card size) — one page per bag count.
     // ═══════════════════════════════════════════════════════════════════
     public function baggageTagPdf(int $id)
     {
         if (!$this->isAdminUser()) {
             return $this->jsonResponse(['error' => 'Forbidden.'], 403);
         }
+
+        $db  = \Config\Database::connect();
+
+        // ── Load baggage row ─────────────────────────────────────────
+        $bag = $db->table('manifest_baggage')
+            ->where('id', $id)
+            ->get()
+            ->getFirstRow('array');
+
+        if (!$bag) {
+            return $this->response->setStatusCode(404)
+                ->setJSON(['error' => 'Baggage item not found.']);
+        }
+
+        // ── Load upload (for boat name, trip date, direction) ────────
+        $upload = $db->table('manifest_uploads')
+            ->where('id', $bag['upload_id'])
+            ->get()
+            ->getFirstRow('array');
+
+        $boatName    = $upload['boat_name']    ?? '';
+        $tripDate    = $upload['trip_date']    ?? null;
+        $direction   = $upload['direction']    ?? 'DEPARTURE';
+        $origin      = $upload['origin']       ?? '';
+        $destination = $upload['destination']  ?? '';
+
+        // ── Boat brand color ─────────────────────────────────────────
+        $boatColors = [
+            'la luna'   => [24, 0, 173],
+            'la vela'   => [191, 0, 0],
+            'la brisa'  => [255, 87, 208],
+            'mola mola' => [255, 145, 77],
+            'mola-mola' => [255, 145, 77],
+            'la casa'   => [167, 122, 255],
+            'alma'      => [255, 222, 89],
+        ];
+        $brandColor  = [242, 136, 28]; // default orange
+        $boatLower   = strtolower($boatName);
+        foreach ($boatColors as $key => $rgb) {
+            if (str_contains($boatLower, $key)) { $brandColor = $rgb; break; }
+        }
+
+        // Decide text color on header (dark brand = white text, light = black)
+        $luminance = 0.299 * $brandColor[0] + 0.587 * $brandColor[1] + 0.114 * $brandColor[2];
+        $headerTextColor = $luminance < 160 ? [255, 255, 255] : [20, 20, 20];
+
+        // ── Date formatting ──────────────────────────────────────────
+        $months = ['January'=>'Januari','February'=>'Februari','March'=>'Maret',
+            'April'=>'April','May'=>'Mei','June'=>'Juni','July'=>'Juli',
+            'August'=>'Agustus','September'=>'September','October'=>'Oktober',
+            'November'=>'November','December'=>'Desember'];
+
+        $tripDateFmt = $tripDate
+            ? strtr(date('d M Y', strtotime($tripDate)), $months)
+            : 'N/A';
+        $dirLabel = ($direction === 'RETURN') ? 'RETURN' : 'DEPARTURE';
+
+        // ── Build QR content ─────────────────────────────────────────
+        $qrDir = WRITEPATH . 'uploads/qr_codes/';
+        if (!is_dir($qrDir)) mkdir($qrDir, 0775, true);
+
+        $qrContent  = 'NAMA_BAG_' . $bag['upload_id'] . '_' . $id . '_' . strtoupper(str_replace(' ', '_', $bag['group_name']));
+        $qrFilePath = $qrDir . uniqid('bag_') . '.png';
+        $qrOk       = false;
+        try {
+            $writer = new \Endroid\QrCode\Writer\PngWriter();
+            $qrCode = \Endroid\QrCode\QrCode::create($qrContent)
+                ->setEncoding(new \Endroid\QrCode\Encoding\Encoding('UTF-8'))
+                ->setSize(250)->setMargin(4)
+                ->setForegroundColor(new \Endroid\QrCode\Color\Color(0, 0, 0))
+                ->setBackgroundColor(new \Endroid\QrCode\Color\Color(255, 255, 255));
+            $writer->write($qrCode)->saveToFile($qrFilePath);
+            $qrOk = true;
+        } catch (\Exception $e) {
+            $qrFilePath = null;
+        }
+
+        // ── PDF: 85.6 x 54 mm landscape (credit card size) ───────────
+        $pdf = new \App\Libraries\BoardingPassPDF('L', 'mm', [85.6, 54]);
+        $pdf->SetAutoPageBreak(false);
+        $pdf->SetTitle('Baggage-Tag-' . $id);
+        $pdf->SetMargins(0, 0, 0);
+
+        $bagCount = max(1, (int)($bag['bag_count'] ?? 1));
+
+        for ($page = 1; $page <= $bagCount; $page++) {
+            $pdf->AddPage();
+
+            $W = 85.6;  // page width mm (credit card width)
+            $H = 54;    // page height mm (credit card height)
+
+            // ── Outer border ──────────────────────────────────────────
+            $pdf->SetDrawColor(220, 220, 220);
+            $pdf->SetLineWidth(0.4);
+            $pdf->Rect(1, 1, $W - 2, $H - 2);
+
+            // ── Header band (brand color) ─────────────────────────────
+            $pdf->SetFillColor(...$brandColor);
+            $pdf->Rect(1, 1, $W - 2, 12, 'F');
+
+            // Yacht icon in header (same as boarding pass)
+            $pdf->YachtIconAuto(3, 2, 7, 8);
+
+            // "NAMA Marine" brand
+            $pdf->SetFont('Arial', 'B', 8);
+            $pdf->SetTextColor(...$headerTextColor);
+            $pdf->SetXY(11, 3);
+            $pdf->Cell(40, 4, 'NAMA Marine', 0, 0, 'L');
+
+            // Direction badge
+            $pdf->SetFont('Arial', 'B', 6);
+            $pdf->SetXY(11, 7.5);
+            $pdf->Cell(40, 3, $dirLabel, 0, 0, 'L');
+
+            // Bag counter top-right (e.g. "2/3")
+            $pdf->SetFont('Arial', 'B', 7);
+            $pdf->SetXY($W - 14, 3);
+            $pdf->Cell(12, 4, $page . '/' . $bagCount, 0, 0, 'R');
+
+            // "BAGGAGE TAG" label
+            $pdf->SetFont('Arial', 'B', 5.5);
+            $pdf->SetXY($W - 14, 7.5);
+            $pdf->Cell(12, 3, 'BAGGAGE', 0, 0, 'R');
+
+            $pdf->SetTextColor(30, 30, 30);
+
+            // ── Content Area ──────────────────────────────────────────
+            $y = 15;
+            $leftX = 3;
+            $rightX = $W - 23;
+
+            // Guest name (large, bold)
+            $pdf->SetFont('Arial', 'B', 11);
+            $pdf->SetXY($leftX, $y);
+            $guestName = strtoupper($bag['group_name'] ?? '');
+            // Truncate if too long
+            if (strlen($guestName) > 25) $guestName = substr($guestName, 0, 22) . '...';
+            $pdf->Cell(55, 5, $guestName, 0, 0, 'L');
+            $y += 6;
+
+            // Route line (origin → destination)
+            $pdf->SetFont('Arial', '', 7);
+            $pdf->SetTextColor(100, 100, 100);
+            $routeText = strtoupper($origin) . ' → ' . strtoupper($destination);
+            if (strlen($routeText) > 35) $routeText = substr($routeText, 0, 32) . '...';
+            $pdf->SetXY($leftX, $y);
+            $pdf->Cell(55, 4, $routeText, 0, 0, 'L');
+            $y += 5;
+
+            // ── Divider ───────────────────────────────────────────────
+            $pdf->SetDrawColor(230, 230, 230);
+            $pdf->SetLineWidth(0.2);
+            $pdf->Line($leftX, $y, $rightX - 2, $y);
+            $y += 3;
+
+            // ── Detail fields (compact 2-column) ──────────────────────
+            $pdf->SetTextColor(30, 30, 30);
+            $labelW = 15;
+            $valW = 22;
+
+            $fields = [
+                ['Boat',   strtoupper($boatName)],
+                ['Date',   $tripDateFmt],
+                ['Label',  strtoupper($bag['bag_label'] ?? '-')],
+                ['Bags',   ($bag['bag_count'] ?? 1) . ' pcs'],
+            ];
+
+            if (!empty($bag['weight_kg'])) {
+                $fields[] = ['Weight', $bag['weight_kg'] . ' kg'];
+            }
+
+            foreach ($fields as $idx => [$label, $val]) {
+                $pdf->SetFont('Arial', '', 6);
+                $pdf->SetTextColor(120, 120, 120);
+                $pdf->SetXY($leftX, $y);
+                $pdf->Cell($labelW, 3.5, $label, 0, 0, 'L');
+
+                $pdf->SetFont('Arial', 'B', 7);
+                $pdf->SetTextColor(20, 20, 20);
+                $pdf->SetXY($leftX + $labelW, $y);
+                // Truncate value if too long
+                if (strlen($val) > 22) $val = substr($val, 0, 19) . '...';
+                $pdf->Cell($valW, 3.5, $val, 0, 0, 'L');
+                $y += 4;
+            }
+
+            // Description (if exists)
+            if (!empty($bag['description'])) {
+                $y += 1;
+                $pdf->SetFont('Arial', '', 6);
+                $pdf->SetTextColor(120, 120, 120);
+                $pdf->SetXY($leftX, $y);
+                $pdf->Cell($labelW, 3, 'Note', 0, 0, 'L');
+
+                $pdf->SetFont('Arial', '', 6.5);
+                $pdf->SetTextColor(60, 60, 60);
+                $pdf->SetXY($leftX + $labelW, $y);
+                $desc = $bag['description'];
+                if (strlen($desc) > 40) $desc = substr($desc, 0, 37) . '...';
+                $pdf->MultiCell($valW, 3, $desc, 0, 'L');
+            }
+
+            // ── QR Code (right side) ──────────────────────────────────
+            $qrSize = 18;
+            $qrX = $rightX;
+            $qrY = $y = 15;
+
+            if ($qrOk && $qrFilePath && file_exists($qrFilePath)) {
+                $pdf->Image($qrFilePath, $qrX, $qrY, $qrSize, $qrSize, 'PNG');
+            }
+
+            // "SCAN" label below QR
+            $pdf->SetFont('Arial', 'B', 5);
+            $pdf->SetTextColor(140, 140, 140);
+            $pdf->SetXY($qrX, $qrY + $qrSize + 1);
+            $pdf->Cell($qrSize, 3, 'SCAN ME', 0, 0, 'C');
+
+            // ── Footer barcode strip ──────────────────────────────────
+            $footerY = $H - 8;
+            $pdf->SetFillColor(...$brandColor);
+            $pdf->Rect(1, $footerY, $W - 2, 7, 'F');
+
+            // Baggage ID label
+            $bagLabel = strtoupper($bag['bag_label'] ?? ('BAG-' . str_pad($id, 4, '0', STR_PAD_LEFT)));
+            $pdf->SetFont('Arial', 'B', 7);
+            $pdf->SetTextColor(...$headerTextColor);
+            $pdf->SetXY(3, $footerY + 1);
+            $pdf->Cell(40, 3, $bagLabel, 0, 0, 'L');
+
+            // Fake barcode
+            $pdf->SetFont('Arial', '', 6);
+            $pdf->SetXY(3, $footerY + 4);
+            $pdf->Cell(40, 2.5, '||| || ||| | |||| || | ||| ||', 0, 0, 'L');
+
+            // Page number
+            $pdf->SetFont('Arial', 'B', 6);
+            $pdf->SetXY($W - 14, $footerY + 1.5);
+            $pdf->Cell(12, 3, 'Tag ' . $page, 0, 0, 'R');
+        }
+
+        // ── Cleanup QR temp ──────────────────────────────────────────
+        if ($qrFilePath && file_exists($qrFilePath)) {
+            @unlink($qrFilePath);
+        }
+
+        // ── Mark as printed ──────────────────────────────────────────
+        $db->table('manifest_baggage')
+            ->where('id', $id)
+            ->update(['tag_printed' => 1]);
+
+        // ── Output ───────────────────────────────────────────────────
+        $pdfContent = $pdf->Output('S');
+
+        while (ob_get_level() > 0) { ob_end_clean(); }
+
+        return $this->response
+            ->setHeader('Content-Type', 'application/pdf')
+            ->setHeader('Content-Disposition', 'inline; filename="baggage-tag-' . $id . '.pdf"')
+            ->setHeader('Cache-Control', 'max-age=0')
+            ->setHeader('Access-Control-Allow-Origin', '*')
+            ->setHeader('Access-Control-Expose-Headers', 'Content-Disposition')
+            ->setStatusCode(200)
+            ->setBody($pdfContent);
+    }
+
+    // ═══════════════════════════════════════════
+    // BOAT CREW ENDPOINTS
+    // ═══════════════════════════════════════════
+
+    // GET /api/admin/manifest/boats
+    public function listBoats()
+    {
 
         $db  = \Config\Database::connect();
 
