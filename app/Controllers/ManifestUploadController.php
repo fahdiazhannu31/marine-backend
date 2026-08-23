@@ -1179,6 +1179,22 @@ class ManifestUploadController extends ApiController
             : 'N/A';
         $dirLabel = ($direction === 'RETURN') ? 'RETURN' : 'DEPARTURE';
 
+        // ── Auto-generate bag_label if empty ──────────────────────────
+        // Format: first 3 words of group name (max 10 chars) + -001, -002, ...
+        // e.g. "NOVA MARLINA SITORUS" with 3 bags → NOVA-MAR-001, NOVA-MAR-002, NOVA-MAR-003
+        if (empty($bag['bag_label'])) {
+            $groupWords = preg_split('/\s+/', strtoupper(trim($bag['group_name'] ?? 'BAG')));
+            $prefix     = implode('-', array_slice(array_map(fn($w) => substr($w, 0, 4), $groupWords), 0, 2));
+            $prefix     = preg_replace('/[^A-Z0-9\-]/', '', $prefix);
+            $prefix     = rtrim(substr($prefix, 0, 10), '-');
+            // Save the generated label back to DB so future prints are consistent
+            $db->table('manifest_baggage')->where('id', $id)->update(['bag_label' => $prefix . '-001']);
+            $bag['bag_label'] = $prefix;  // per-page suffix added in loop
+            $autoLabel = true;
+        } else {
+            $autoLabel = false;
+        }
+
         // ── Build QR content ─────────────────────────────────────────
         $qrDir = WRITEPATH . 'uploads/qr_codes/';
         if (!is_dir($qrDir)) mkdir($qrDir, 0775, true);
@@ -1199,8 +1215,8 @@ class ManifestUploadController extends ApiController
             $qrFilePath = null;
         }
 
-        // ── PDF: 85.6 x 54 mm landscape (credit card size) ───────────
-        $pdf = new \App\Libraries\BoardingPassPDF('L', 'mm', [85.6, 54]);
+        // ── PDF: 105 x 40 mm landscape (long strip for luggage wrap) ─
+        $pdf = new \App\Libraries\BoardingPassPDF('L', 'mm', [105, 40]);
         $pdf->SetAutoPageBreak(false);
         $pdf->SetTitle('Baggage-Tag-' . $id);
         $pdf->SetMargins(0, 0, 0);
@@ -1210,156 +1226,124 @@ class ManifestUploadController extends ApiController
         for ($page = 1; $page <= $bagCount; $page++) {
             $pdf->AddPage();
 
-            $W = 85.6;  // page width mm (credit card width)
-            $H = 54;    // page height mm (credit card height)
+            $W = 105;   // page width mm
+            $H = 40;    // page height mm
 
             // ── Outer border ──────────────────────────────────────────
-            $pdf->SetDrawColor(220, 220, 220);
-            $pdf->SetLineWidth(0.4);
+            $pdf->SetDrawColor(210, 210, 210);
+            $pdf->SetLineWidth(0.35);
             $pdf->Rect(1, 1, $W - 2, $H - 2);
 
-            // ── Header band (brand color) ─────────────────────────────
+            // ── Left header band (brand color, full height) ───────────
+            $bandW = 22;
             $pdf->SetFillColor(...$brandColor);
-            $pdf->Rect(1, 1, $W - 2, 12, 'F');
+            $pdf->Rect(1, 1, $bandW, $H - 2, 'F');
 
-            // Yacht icon in header (same as boarding pass)
-            $pdf->YachtIconAuto(3, 2, 7, 8);
+            // Yacht icon in band (centred vertically)
+            $pdf->YachtIconAuto(3, 3, 9, 8);
 
-            // "NAMA Marine" brand
-            $pdf->SetFont('Arial', 'B', 8);
-            $pdf->SetTextColor(...$headerTextColor);
-            $pdf->SetXY(11, 3);
-            $pdf->Cell(40, 4, 'NAMA Marine', 0, 0, 'L');
-
-            // Direction badge
-            $pdf->SetFont('Arial', 'B', 6);
-            $pdf->SetXY(11, 7.5);
-            $pdf->Cell(40, 3, $dirLabel, 0, 0, 'L');
-
-            // Bag counter top-right (e.g. "2/3")
+            // "NAMA Marine" vertical text replaced with stacked lines
             $pdf->SetFont('Arial', 'B', 7);
-            $pdf->SetXY($W - 14, 3);
-            $pdf->Cell(12, 4, $page . '/' . $bagCount, 0, 0, 'R');
+            $pdf->SetTextColor(...$headerTextColor);
+            $pdf->SetXY(2, 13);
+            $pdf->Cell($bandW - 2, 4, 'NAMA', 0, 1, 'C');
+            $pdf->SetXY(2, 17);
+            $pdf->Cell($bandW - 2, 4, 'Marine', 0, 1, 'C');
 
-            // "BAGGAGE TAG" label
+            // Direction badge at bottom of band
             $pdf->SetFont('Arial', 'B', 5.5);
-            $pdf->SetXY($W - 14, 7.5);
-            $pdf->Cell(12, 3, 'BAGGAGE', 0, 0, 'R');
+            $pdf->SetXY(2, $H - 9);
+            $pdf->Cell($bandW - 2, 3.5, $dirLabel, 0, 0, 'C');
+
+            // Bag counter at very bottom of band
+            $pdf->SetFont('Arial', 'B', 6);
+            $pdf->SetXY(2, $H - 5.5);
+            $pdf->Cell($bandW - 2, 3.5, $page . '/' . $bagCount, 0, 0, 'C');
 
             $pdf->SetTextColor(30, 30, 30);
 
-            // ── Content Area ──────────────────────────────────────────
-            $y = 15;
-            $leftX = 3;
-            $rightX = $W - 23;
-
-            // Guest name (large, bold)
-            $pdf->SetFont('Arial', 'B', 11);
-            $pdf->SetXY($leftX, $y);
-            $guestName = strtoupper($bag['group_name'] ?? '');
-            // Truncate if too long
-            if (strlen($guestName) > 25) $guestName = substr($guestName, 0, 22) . '...';
-            $pdf->Cell(55, 5, $guestName, 0, 0, 'L');
-            $y += 6;
-
-            // Route line (origin → destination)
-            $pdf->SetFont('Arial', '', 7);
-            $pdf->SetTextColor(100, 100, 100);
-            $routeText = strtoupper($origin) . ' → ' . strtoupper($destination);
-            if (strlen($routeText) > 35) $routeText = substr($routeText, 0, 32) . '...';
-            $pdf->SetXY($leftX, $y);
-            $pdf->Cell(55, 4, $routeText, 0, 0, 'L');
-            $y += 5;
-
-            // ── Divider ───────────────────────────────────────────────
-            $pdf->SetDrawColor(230, 230, 230);
-            $pdf->SetLineWidth(0.2);
-            $pdf->Line($leftX, $y, $rightX - 2, $y);
-            $y += 3;
-
-            // ── Detail fields (compact 2-column) ──────────────────────
-            $pdf->SetTextColor(30, 30, 30);
-            $labelW = 15;
-            $valW = 22;
-
-            $fields = [
-                ['Boat',   strtoupper($boatName)],
-                ['Date',   $tripDateFmt],
-                ['Label',  strtoupper($bag['bag_label'] ?? '-')],
-                ['Bags',   ($bag['bag_count'] ?? 1) . ' pcs'],
-            ];
-
-            if (!empty($bag['weight_kg'])) {
-                $fields[] = ['Weight', $bag['weight_kg'] . ' kg'];
-            }
-
-            foreach ($fields as $idx => [$label, $val]) {
-                $pdf->SetFont('Arial', '', 6);
-                $pdf->SetTextColor(120, 120, 120);
-                $pdf->SetXY($leftX, $y);
-                $pdf->Cell($labelW, 3.5, $label, 0, 0, 'L');
-
-                $pdf->SetFont('Arial', 'B', 7);
-                $pdf->SetTextColor(20, 20, 20);
-                $pdf->SetXY($leftX + $labelW, $y);
-                // Truncate value if too long
-                if (strlen($val) > 22) $val = substr($val, 0, 19) . '...';
-                $pdf->Cell($valW, 3.5, $val, 0, 0, 'L');
-                $y += 4;
-            }
-
-            // Description (if exists)
-            if (!empty($bag['description'])) {
-                $y += 1;
-                $pdf->SetFont('Arial', '', 6);
-                $pdf->SetTextColor(120, 120, 120);
-                $pdf->SetXY($leftX, $y);
-                $pdf->Cell($labelW, 3, 'Note', 0, 0, 'L');
-
-                $pdf->SetFont('Arial', '', 6.5);
-                $pdf->SetTextColor(60, 60, 60);
-                $pdf->SetXY($leftX + $labelW, $y);
-                $desc = $bag['description'];
-                if (strlen($desc) > 40) $desc = substr($desc, 0, 37) . '...';
-                $pdf->MultiCell($valW, 3, $desc, 0, 'L');
-            }
-
-            // ── QR Code (right side) ──────────────────────────────────
-            $qrSize = 18;
-            $qrX = $rightX;
-            $qrY = $y = 15;
+            // ── Right QR block ────────────────────────────────────────
+            $qrSize = 26;
+            $qrX    = $W - $qrSize - 3;
+            $qrY    = 2;              // pin QR to top, not centred
 
             if ($qrOk && $qrFilePath && file_exists($qrFilePath)) {
                 $pdf->Image($qrFilePath, $qrX, $qrY, $qrSize, $qrSize, 'PNG');
             }
 
-            // "SCAN" label below QR
-            $pdf->SetFont('Arial', 'B', 5);
-            $pdf->SetTextColor(140, 140, 140);
-            $pdf->SetXY($qrX, $qrY + $qrSize + 1);
-            $pdf->Cell($qrSize, 3, 'SCAN ME', 0, 0, 'C');
+            // Dotted separator left of QR — full card height
+            $pdf->SetFillColor(200, 200, 200);
+            $pdf->DottedLine($qrX - 2, 2, $qrX - 2, $H - 2, 0.25, 1.2);
 
-            // ── Footer barcode strip ──────────────────────────────────
-            $footerY = $H - 8;
-            $pdf->SetFillColor(...$brandColor);
-            $pdf->Rect(1, $footerY, $W - 2, 7, 'F');
+            // ── Middle content area (strictly stays left of separator) ─
+            $cx  = $bandW + 4;
+            $cw  = $qrX - $cx - 4;   // hard stop before dotted line
+            $cy  = 3;
 
-            // Baggage ID label
-            $bagLabel = strtoupper($bag['bag_label'] ?? ('BAG-' . str_pad($id, 4, '0', STR_PAD_LEFT)));
-            $pdf->SetFont('Arial', 'B', 7);
-            $pdf->SetTextColor(...$headerTextColor);
-            $pdf->SetXY(3, $footerY + 1);
-            $pdf->Cell(40, 3, $bagLabel, 0, 0, 'L');
+            // Guest name
+            $pdf->SetFont('Arial', 'B', 10);
+            $pdf->SetTextColor(20, 20, 20);
+            $pdf->SetXY($cx, $cy);
+            $guestName = strtoupper($bag['group_name'] ?? '');
+            if (mb_strlen($guestName) > 22) $guestName = mb_substr($guestName, 0, 19) . '...';
+            $pdf->Cell($cw, 6, $guestName, 0, 0, 'L');
 
-            // Fake barcode
-            $pdf->SetFont('Arial', '', 6);
-            $pdf->SetXY(3, $footerY + 4);
-            $pdf->Cell(40, 2.5, '||| || ||| | |||| || | ||| ||', 0, 0, 'L');
+            // Route
+            $cy += 6.5;
+            $pdf->SetFont('Arial', '', 6.5);
+            $pdf->SetTextColor(100, 100, 100);
+            $routeText = strtoupper($origin) . ' >> ' . strtoupper($destination);
+            if (mb_strlen($routeText) > 32) $routeText = mb_substr($routeText, 0, 29) . '...';
+            $pdf->SetXY($cx, $cy);
+            $pdf->Cell($cw, 3.5, $routeText, 0, 0, 'L');
 
-            // Page number
+            // Thin divider
+            $cy += 4.5;
+            $pdf->SetDrawColor(220, 220, 220);
+            $pdf->SetLineWidth(0.2);
+            $pdf->Line($cx, $cy, $cx + $cw, $cy);
+            $cy += 2.5;
+
+            // Fields: single-column stacked (no 2-col overlap risk)
+            $lw   = 12;    // label column width
+            $vw   = $cw - $lw;  // value column width
+            $rowH = 4.0;
+
+            $fields = [
+                ['Boat',  strtoupper(mb_substr($boatName, 0, 20))],
+                ['Label', $autoLabel
+                    ? strtoupper($bag['bag_label'] . '-' . str_pad($page, 3, '0', STR_PAD_LEFT))
+                    : strtoupper($bag['bag_label'] ?? '-')],
+            ];
+            if (!empty($bag['weight_kg'])) {
+                $fields[] = ['Wt', $bag['weight_kg'] . ' kg'];
+            }
+            $fields[] = ['Date',  $tripDateFmt];
+            $fields[] = ['Bags',  ($bag['bag_count'] ?? 1) . ' pcs'];
+
+            foreach ($fields as [$label, $val]) {
+                if ($cy > $H - 8) break;
+                $pdf->SetFont('Arial', '', 5.5);
+                $pdf->SetTextColor(130, 130, 130);
+                $pdf->SetXY($cx, $cy);
+                $pdf->Cell($lw, $rowH, $label, 0, 0, 'L');
+
+                if (mb_strlen($val) > 22) $val = mb_substr($val, 0, 20) . '..';
+                $pdf->SetFont('Arial', 'B', 6.5);
+                $pdf->SetTextColor(20, 20, 20);
+                $pdf->SetXY($cx + $lw, $cy);
+                $pdf->Cell($vw, $rowH, $val, 0, 0, 'L');
+                $cy += $rowH;
+            }
+
+            // Bag label at bottom of content
+            $bagLabel = $autoLabel
+                ? strtoupper($bag['bag_label'] . '-' . str_pad($page, 3, '0', STR_PAD_LEFT))
+                : strtoupper($bag['bag_label']);
             $pdf->SetFont('Arial', 'B', 6);
-            $pdf->SetXY($W - 14, $footerY + 1.5);
-            $pdf->Cell(12, 3, 'Tag ' . $page, 0, 0, 'R');
+            $pdf->SetTextColor(...$brandColor);
+            $pdf->SetXY($cx, $H - 5.5);
+            $pdf->Cell($cw, 4, $bagLabel, 0, 0, 'L');
         }
 
         // ── Cleanup QR temp ──────────────────────────────────────────
@@ -1452,6 +1436,7 @@ class ManifestUploadController extends ApiController
 
 
     
+
 public function boardingPass(int $uploadId)
 {
     $db = \Config\Database::connect();
@@ -1488,10 +1473,7 @@ public function boardingPass(int $uploadId)
 
     if ($ticketIdsRaw) {
         $ids = array_filter(
-            array_map(
-                'intval',
-                explode(',', $ticketIdsRaw)
-            )
+            array_map('intval', explode(',', $ticketIdsRaw))
         );
 
         if (!empty($ids)) {
@@ -1518,17 +1500,13 @@ public function boardingPass(int $uploadId)
 
     $boardingTime = 'N/A';
 
-    // ── Get boarding time ────────────────────────────────────
     $schedule = $db->table('schedule')
         ->where('id', $upload['schedule_id'])
         ->get()
         ->getFirstRow('array');
 
     if ($schedule && !empty($schedule['date'])) {
-        $boardingTime = date(
-            'H:i',
-            strtotime($schedule['date'])
-        );
+        $boardingTime = date('H:i', strtotime($schedule['date']));
     }
 
     // ── QR directory ─────────────────────────────────────────
@@ -1538,35 +1516,40 @@ public function boardingPass(int $uploadId)
         mkdir($qrDir, 0775, true);
     }
 
-    // ── PDF ──────────────────────────────────────────────────
-    // 210 x 100 mm = 21 x 10 cm
+    /*
+    |--------------------------------------------------------------------------
+    | PDF — sized for 4-inch (100mm) thermal label, 203DPI
+    |--------------------------------------------------------------------------
+    | Page: 100mm x 100mm, portrait, one ticket per page.
+    | (If you actually need 3-inch/80mm stock, change PAGE_W below to 80
+    | and shrink the field widths proportionally — just ask and I'll do it.)
+    */
+    // A7 landscape: 105 x 74 mm
+    $pageW = 105;
+    $pageH = 74;
+
     $pdf = new \App\Libraries\BoardingPassPDF(
         'L',
         'mm',
-        [210, 100]
+        [$pageW, $pageH]
     );
 
     $pdf->SetAutoPageBreak(false);
-    $pdf->SetTitle(
-        'Boarding-Pass-Upload-' . $uploadId
-    );
+    $pdf->SetTitle('Boarding-Pass-Upload-' . $uploadId);
 
     // ── Colors berdasarkan boat ──────────────────────────────
-    // Default orange, akan di-override sesuai boat name
     $boatNameLower = strtolower($boatName);
-    
-    // Map boat name ke warna header (RGB)
+
     $boatColors = [
-        'la luna'   => [24, 0, 173],      // #1800ad
-        'la vela'   => [191, 0, 0],        // #bf0000
-        'labrisa'  => [255, 87, 208],     // #ff57d0
-        'mola mola' => [255, 145, 77],     // #ff914d
-        'mola-mola' => [255, 145, 77],     // #ff914d (alias)
-        'la casa'   => [167, 122, 255],    // #a77aff
-        'alma'      => [255, 222, 89],     // #ffde59
+        'la luna'   => [24, 0, 173],
+        'la vela'   => [191, 0, 0],
+        'labrisa'   => [255, 87, 208],
+        'mola mola' => [255, 145, 77],
+        'mola-mola' => [255, 145, 77],
+        'la casa'   => [167, 122, 255],
+        'alma'      => [255, 222, 89],
     ];
-    
-    // Cari warna yang sesuai
+
     $headerColor = [242, 136, 28]; // default orange
     foreach ($boatColors as $boatKey => $rgb) {
         if (stripos($boatNameLower, $boatKey) !== false) {
@@ -1575,17 +1558,8 @@ public function boardingPass(int $uploadId)
         }
     }
 
-    $borderGray = [
-        220,
-        222,
-        226
-    ];
-
-    $labelGray = [
-        150,
-        155,
-        160
-    ];
+    $borderGray = [220, 222, 226];
+    $labelGray  = [150, 155, 160];
 
     $qrFiles = [];
 
@@ -1593,97 +1567,48 @@ public function boardingPass(int $uploadId)
     |--------------------------------------------------------------------------
     | Helper: wrap text
     |--------------------------------------------------------------------------
-    |
-    | Font tidak dikecilkan.
-    |
-    | Text akan dipecah berdasarkan lebar kolom.
-    |
-    | Contoh:
-    |
-    | 
-    |
-    | menjadi:
-    |
-    | 
-    | 
-    |
-    | Jika satu kata terlalu panjang dan tidak memiliki spasi,
-    | kata tersebut akan dipotong berdasarkan karakter.
-    |--------------------------------------------------------------------------
     */
-    $wrapText = function (
-        $text,
-        $maxWidth
-    ) use ($pdf) {
+    $wrapText = function ($text, $maxWidth) use ($pdf) {
 
-        $text = trim(
-            (string) $text
-        );
+        $text = trim((string) $text);
 
         if ($text === '') {
             return [''];
         }
 
-        $words = preg_split(
-            '/\s+/u',
-            $text
-        );
+        $words = preg_split('/\s+/u', $text);
 
         $lines = [];
         $currentLine = '';
 
         foreach ($words as $word) {
 
-            $testLine = $currentLine === ''
-                ? $word
-                : $currentLine . ' ' . $word;
+            $testLine = $currentLine === '' ? $word : $currentLine . ' ' . $word;
 
-            // Masih muat dalam satu baris
-            if (
-                $pdf->GetStringWidth($testLine)
-                <= $maxWidth
-            ) {
+            if ($pdf->GetStringWidth($testLine) <= $maxWidth) {
                 $currentLine = $testLine;
                 continue;
             }
 
-            // Simpan baris sebelumnya
             if ($currentLine !== '') {
                 $lines[] = $currentLine;
                 $currentLine = '';
             }
 
-            // Jika satu kata saja terlalu panjang,
-            // pecah berdasarkan karakter.
-            if (
-                $pdf->GetStringWidth($word)
-                > $maxWidth
-            ) {
+            if ($pdf->GetStringWidth($word) > $maxWidth) {
 
-                $chars = preg_split(
-                    '//u',
-                    $word,
-                    -1,
-                    PREG_SPLIT_NO_EMPTY
-                );
-
+                $chars = preg_split('//u', $word, -1, PREG_SPLIT_NO_EMPTY);
                 $part = '';
 
                 foreach ($chars as $char) {
-
                     $testPart = $part . $char;
 
-                    if (
-                        $pdf->GetStringWidth($testPart)
-                        <= $maxWidth
-                    ) {
+                    if ($pdf->GetStringWidth($testPart) <= $maxWidth) {
                         $part = $testPart;
                     } else {
-
                         if ($part !== '') {
                             $lines[] = $part;
                         }
-
                         $part = $char;
                     }
                 }
@@ -1691,7 +1616,6 @@ public function boardingPass(int $uploadId)
                 $currentLine = $part;
 
             } else {
-
                 $currentLine = $word;
             }
         }
@@ -1700,1152 +1624,196 @@ public function boardingPass(int $uploadId)
             $lines[] = $currentLine;
         }
 
-        return !empty($lines)
-            ? $lines
-            : [''];
+        return !empty($lines) ? $lines : [''];
     };
 
-
     /*
     |--------------------------------------------------------------------------
-    | Helper: Main field
-    |--------------------------------------------------------------------------
-    |
-    | Digunakan untuk:
-    |
-    | Group
-    | Name
-    | Boarding
-    | Date
-    | From
-    | Boat
-    | Direction
-    |
-    | Font tetap.
-    | Jika panjang -> otomatis turun.
-    |
-    | Return:
-    | tinggi field yang digunakan.
+    | Helper: stacked field (label on top, value below) — full width
     |--------------------------------------------------------------------------
     */
-    $fieldMain = null;
+    $fieldStacked = function (
+        $x, $y, $w, $label, $value, $valueColor = [26, 26, 26],
+        $lblSz = 6.0, $valSz = 9.0
+    ) use ($pdf, $wrapText) {
 
+        $pdf->SetFont('Arial', '', $lblSz);
+        $pdf->SetTextColor(150, 155, 160);
+        $pdf->SetXY($x, $y);
+        $pdf->Cell($w, 3, strtoupper($label), 0, 1);
 
-    /*
-    |--------------------------------------------------------------------------
-    | Helper: Stub field
-    |--------------------------------------------------------------------------
-    |
-    | Digunakan untuk bagian kanan ticket:
-    |
-    | Group
-    | Passenger
-    | Boarding
-    | Type
-    | Boat
-    | Seat
-    | Ticket Code
-    |--------------------------------------------------------------------------
-    */
-    $fieldStub = null;
+        $pdf->SetFont('Arial', 'B', $valSz);
+        $pdf->SetTextColor(...$valueColor);
 
+        $lines = $wrapText($value, $w);
+        $lineHeight = $valSz * 0.5;
+        $valueY = $y + 3.3;
+
+        foreach ($lines as $line) {
+            $pdf->SetXY($x, $valueY);
+            $pdf->Cell($w, $lineHeight, $line, 0, 1, 'L');
+            $valueY += $lineHeight;
+        }
+
+        $pdf->SetTextColor(0, 0, 0);
+
+        return 3.3 + (count($lines) * $lineHeight);
+    };
 
     foreach ($tickets as $ticket) {
 
-        $passengerName = $ticket['passenger_name']
-            ?: 'Passenger';
-
-        $groupName = $ticket['group_name']
-            ?: $passengerName;
-
-        $seatNumber = $ticket['seat_number']
-            ?: '-';
-
-        $ticketCode = $ticket['ticket_code']
-            ?: (
-                'TKT-' .
-                $uploadId .
-                '-' .
-                $ticket['id']
-            );
-
-        $ket = strtoupper(
-            $ticket['ket'] ?? ''
-        );
-
+        $passengerName = $ticket['passenger_name'] ?: 'Passenger';
+        $groupName     = $ticket['group_name'] ?: $passengerName;
+        $seatNumber    = $ticket['seat_number'] ?: '-';
+        $ticketCode    = $ticket['ticket_code'] ?: ('TKT-' . $uploadId . '-' . $ticket['id']);
+        $ket           = strtoupper($ticket['ket'] ?? '');
 
         // ── QR code ───────────────────────────────────────────
-        $qrContent =
-            'NAMA_MARINE_MANIFEST_' .
-            $ticketCode;
-
-        $qrFilePath =
-            $qrDir .
-            uniqid('mp_') .
-            '.png';
+        $qrContent = 'NAMA_MARINE_MANIFEST_' . $ticketCode;
+        $qrFilePath = $qrDir . uniqid('mp_') . '.png';
 
         try {
+            $writer = new \Endroid\QrCode\Writer\PngWriter();
 
-            $writer =
-                new \Endroid\QrCode\Writer\PngWriter();
-
-            $qrCode =
-                \Endroid\QrCode\QrCode::create(
-                    $qrContent
-                )
-                ->setEncoding(
-                    new \Endroid\QrCode\Encoding\Encoding(
-                        'UTF-8'
-                    )
-                )
+            $qrCode = \Endroid\QrCode\QrCode::create($qrContent)
+                ->setEncoding(new \Endroid\QrCode\Encoding\Encoding('UTF-8'))
                 ->setSize(300)
                 ->setMargin(8)
-                ->setForegroundColor(
-                    new \Endroid\QrCode\Color\Color(
-                        0,
-                        0,
-                        0
-                    )
-                )
-                ->setBackgroundColor(
-                    new \Endroid\QrCode\Color\Color(
-                        255,
-                        255,
-                        255
-                    )
-                );
+                ->setForegroundColor(new \Endroid\QrCode\Color\Color(0, 0, 0))
+                ->setBackgroundColor(new \Endroid\QrCode\Color\Color(255, 255, 255));
 
-            $writer
-                ->write($qrCode)
-                ->saveToFile(
-                    $qrFilePath
-                );
+            $writer->write($qrCode)->saveToFile($qrFilePath);
 
             $qrFiles[] = $qrFilePath;
 
         } catch (\Exception $e) {
-
             $qrFilePath = null;
         }
 
-
-        // ── New page ──────────────────────────────────────────
+        // ── New page (one label per page) ───────────────────
         $pdf->AddPage();
 
-
-        /*
-        |--------------------------------------------------------------------------
-        | Card dimensions
-        |--------------------------------------------------------------------------
-        */
-        $marginX = 6;
-        $marginY = 6;
+        $marginX = 3;
+        $marginY = 3;
 
         $cardX = $marginX;
         $cardY = $marginY;
+        $cardW = $pageW - ($marginX * 2); // 99mm
+        $cardH = $pageH - ($marginY * 2); // 68mm
 
-        $cardW = 210 - (
-            $marginX * 2
-        );
-
-        $cardH = 100 - (
-            $marginY * 2
-        );
-
-        $vStripW = 9;
-
-        $perfX = $cardX + 130;
-
-
-        // ── Outer border ──────────────────────────────────────
-        $pdf->SetDrawColor(
-            ...$borderGray
-        );
-
+        // Outer border
+        $pdf->SetDrawColor(...$borderGray);
         $pdf->SetLineWidth(0.4);
+        $pdf->Rect($cardX, $cardY, $cardW, $cardH);
 
-        $pdf->Rect(
-            $cardX,
-            $cardY,
-            $cardW,
-            $cardH
-        );
+        // ── Header bar ───────────────────────────────────────
+        $headerH = 11;
 
+        $pdf->SetFillColor(...$headerColor);
+        $pdf->Rect($cardX, $cardY, $cardW, $headerH, 'F');
 
-        // ── Orange header ─────────────────────────────────────
-        $headerH = 15;
+        $pdf->YachtIconAuto($cardX + 2.5, $cardY + 1.5, 8, 7);
 
-        $pdf->SetFillColor(
-            ...$headerColor
-        );
+        $pdf->SetTextColor(255, 255, 255);
+        $pdf->SetFont('Arial', 'B', 10);
+        $pdf->SetXY($cardX + 12, $cardY + 2.5);
+        $pdf->Cell(50, 5.5, 'Boarding Pass', 0, 0, 'L');
 
-        $pdf->Rect(
-            $cardX,
-            $cardY,
-            $cardW,
-            $headerH,
-            'F'
-        );
+        // Boat name in header (right of title)
+        $pdf->SetFont('Arial', 'B', 8);
+        $pdf->SetXY($cardX + 60, $cardY + 2);
+        $pdf->Cell($cardW - 62, 4, strtoupper($boatName), 0, 0, 'C');
 
-
-        // ── Yacht icon ────────────────────────────────────────
-        $pdf->YachtIconAuto(
-            $cardX + 4,
-            $cardY + 2.5,
-            11,
-            10
-        );
-
-
-        // ── Boarding Pass title ───────────────────────────────
-        $pdf->SetTextColor(
-            255,
-            255,
-            255
-        );
-
-        $pdf->SetFont(
-            'Arial',
-            'B',
-            14
-        );
-
-        $pdf->SetXY(
-            $cardX + 17,
-            $cardY + 4
-        );
-
-        $pdf->Cell(
-            $cardW - 20,
-            7,
-            'Boarding Pass',
-            0,
-            0,
-            'L'
-        );
-
-
-        // ── KET badge ─────────────────────────────────────────
         if ($ket) {
-
-            $pdf->SetFont(
-                'Arial',
-                'B',
-                8
-            );
-
-            $pdf->SetXY(
-                $cardX + $cardW - 38,
-                $cardY + 5
-            );
-
-            $pdf->Cell(
-                34,
-                5,
-                $ket,
-                0,
-                0,
-                'R'
-            );
+            $pdf->SetFont('Arial', 'B', 6.5);
+            $pdf->SetXY($cardX + 60, $cardY + 6.5);
+            $pdf->Cell($cardW - 62, 3.5, $ket, 0, 0, 'C');
         }
 
-        $pdf->SetTextColor(
-            0,
-            0,
-            0
-        );
-
-
-        // ── Body ──────────────────────────────────────────────
-        $bodyTop =
-            $cardY +
-            $headerH;
-
-
-        // ── Dotted separator ──────────────────────────────────
-        $pdf->SetFillColor(
-            ...$borderGray
-        );
-
-        $pdf->DottedLine(
-            $perfX,
-            $bodyTop + 2,
-            $perfX,
-            $cardY + $cardH - 2
-        );
-
-
-        // ── Vertical boat-name strip ──────────────────────────
-        $pdf->SetDrawColor(
-            ...$borderGray
-        );
-
-        $pdf->SetLineWidth(0.3);
-
-        $pdf->Line(
-            $cardX + $vStripW,
-            $bodyTop,
-            $cardX + $vStripW,
-            $cardY + $cardH
-        );
-
-        $pdf->SetFont(
-            'Arial',
-            'B',
-            8
-        );
-
-        $pdf->SetTextColor(
-            60,
-            60,
-            60
-        );
-
-        $stripCenterY =
-            $bodyTop +
-            (
-                ($cardY + $cardH) -
-                $bodyTop
-            ) / 2;
-
-        $pdf->RotatedText(
-            $cardX + $vStripW - 2.5,
-            $stripCenterY + 20,
-            strtoupper($boatName),
-            90
-        );
-
-        $pdf->SetTextColor(
-            0,
-            0,
-            0
-        );
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | Content columns
-        |--------------------------------------------------------------------------
-        */
-        $contentX =
-            $cardX +
-            $vStripW +
-            4;
-
-        $col1X = $contentX;
-
-        $col2X =
-            $col1X +
-            50;
-
-        $qrSize = 26;
-
-        $qrX =
-            $perfX -
-            $qrSize -
-            5;
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | IMPORTANT
-        |--------------------------------------------------------------------------
-        | Define these BEFORE $fieldMain uses them.
-        |--------------------------------------------------------------------------
-        */
-        $lblSz = 6.0;
-        $valSz = 8.5;
-        $colW  = 48;
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | Main field function
-        |--------------------------------------------------------------------------
-        */
-        $fieldMain = function (
-            $x,
-            $y,
-            $label,
-            $value,
-            $valueColor = [26, 26, 26]
-        ) use (
-            $pdf,
-            $lblSz,
-            $valSz,
-            $colW,
-            $wrapText
-        ) {
-
-            // Label
-            $pdf->SetFont(
-                'Arial',
-                '',
-                $lblSz
-            );
-
-            $pdf->SetTextColor(
-                150,
-                155,
-                160
-            );
-
-            $pdf->SetXY(
-                $x,
-                $y
-            );
-
-            $pdf->Cell(
-                $colW,
-                3.2,
-                strtoupper($label),
-                0,
-                1
-            );
-
-
-            // Value
-            $pdf->SetFont(
-                'Arial',
-                'B',
-                $valSz
-            );
-
-            $pdf->SetTextColor(
-                ...$valueColor
-            );
-
-            $lines = $wrapText(
-                $value,
-                $colW
-            );
-
-            $lineHeight = 4.2;
-
-            $valueY =
-                $y +
-                3.6;
-
-            foreach ($lines as $line) {
-
-                $pdf->SetXY(
-                    $x,
-                    $valueY
-                );
-
-                $pdf->Cell(
-                    $colW,
-                    $lineHeight,
-                    $line,
-                    0,
-                    1,
-                    'L'
-                );
-
-                $valueY += $lineHeight;
-            }
-
-            $pdf->SetTextColor(
-                0,
-                0,
-                0
-            );
-
-
-            // Return actual field height
-            return 3.6 +
-                (
-                    count($lines) *
-                    $lineHeight
-                );
-        };
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | Stub field function
-        |--------------------------------------------------------------------------
-        */
-        $lblSS = 5.6;
-        $valSS = 7.6;
-
-        $fieldStub = function (
-            $x,
-            $y,
-            $w,
-            $label,
-            $value,
-            $vc = [26, 26, 26]
-        ) use (
-            $pdf,
-            $labelGray,
-            $lblSS,
-            $valSS,
-            $wrapText
-        ) {
-
-            // Label
-            $pdf->SetFont(
-                'Arial',
-                '',
-                $lblSS
-            );
-
-            $pdf->SetTextColor(
-                ...$labelGray
-            );
-
-            $pdf->SetXY(
-                $x,
-                $y
-            );
-
-            $pdf->Cell(
-                $w,
-                3,
-                strtoupper($label),
-                0,
-                1
-            );
-
-
-            // Value
-            $pdf->SetFont(
-                'Arial',
-                'B',
-                $valSS
-            );
-
-            $pdf->SetTextColor(
-                ...$vc
-            );
-
-            $lines = $wrapText(
-                $value,
-                $w
-            );
-
-            $lineHeight = 3.8;
-
-            $valueY =
-                $y +
-                3.4;
-
-            foreach ($lines as $line) {
-
-                $pdf->SetXY(
-                    $x,
-                    $valueY
-                );
-
-                $pdf->Cell(
-                    $w,
-                    $lineHeight,
-                    $line,
-                    0,
-                    1,
-                    'L'
-                );
-
-                $valueY += $lineHeight;
-            }
-
-            $pdf->SetTextColor(
-                0,
-                0,
-                0
-            );
-
-
-            // Return actual height
-            return 3.4 +
-                (
-                    count($lines) *
-                    $lineHeight
-                );
-        };
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | LEFT COLUMN
-        |--------------------------------------------------------------------------
-        */
-        $y = $bodyTop + 5;
-
+        $pdf->SetTextColor(0, 0, 0);
+
+        $bodyTop  = $cardY + $headerH + 2;
+
+        // ── A7 landscape: LEFT column (info) | RIGHT column (QR) ─────
+        $qrSize   = 28;
+        $qrX      = $cardX + $cardW - $qrSize - 2;
+        $qrY      = $cardY + $headerH + 2;
+
+        // QR code first (right side)
+        if ($qrFilePath && file_exists($qrFilePath)) {
+            $pdf->Image($qrFilePath, $qrX, $qrY, $qrSize, $qrSize, 'PNG');
+
+            $pdf->SetFont('Arial', 'B', 5.5);
+            $pdf->SetTextColor(...$labelGray);
+            $pdf->SetXY($qrX, $qrY + $qrSize + 0.5);
+            $pdf->Cell($qrSize, 3, 'SCAN TO CHECK-IN', 0, 0, 'C');
+            $pdf->SetTextColor(0, 0, 0);
+        }
+
+        // ── Dotted divider between info & QR ─────────────────
+        $divX = $qrX - 3;
+        $pdf->SetFillColor(...$borderGray);
+        $pdf->DottedLine($divX, $bodyTop, $divX, $cardY + $cardH - 3, 0.3, 1.4);
+
+        // ── Left info column ──────────────────────────────────
+        $contentX = $cardX + 3;
+        $infoW    = $divX - $contentX - 3;
+        $halfW    = ($infoW - 3) / 2;
+        $col2X    = $contentX + $halfW + 3;
+
+        $y = $bodyTop;
 
         // GROUP
-        $height = $fieldMain(
-            $col1X,
-            $y,
-            'Group',
-            $groupName
-        );
-
-        $y += max(
-            10,
-            $height + 1.5
-        );
-
+        $h = $fieldStacked($contentX, $y, $infoW, 'Group', $groupName, [26,26,26], 5.5, 8.5);
+        $y += max(8, $h + 1);
 
         // NAME
-        $height = $fieldMain(
-            $col1X,
-            $y,
-            'Name',
-            $passengerName
-        );
+        $h = $fieldStacked($contentX, $y, $infoW, 'Passenger', $passengerName, [26,26,26], 5.5, 8.0);
+        $y += max(8, $h + 1);
 
-        $y += max(
-            10,
-            $height + 1.5
-        );
+        // DATE | BOARDING
+        $h1 = $fieldStacked($contentX, $y, $halfW, 'Date', $formattedDate, [26,26,26], 5.5, 7.5);
+        $h2 = $fieldStacked($col2X,    $y, $halfW, 'Boarding', $boardingTime, [26,26,26], 5.5, 7.5);
+        $y += max(8, max($h1, $h2) + 1);
 
-
-        // BOARDING
-        $height = $fieldMain(
-            $col1X,
-            $y,
-            'Boarding',
-            $boardingTime
-        );
-
-        $y += max(
-            10,
-            $height + 1.5
-        );
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | SEAT + TICKET
-        |--------------------------------------------------------------------------
-        */
-        $seatX = $col1X;
-
-        $ticketX =
-            $col1X +
-            24;
-
-        $smallColW = 22;
-
-
-        // Labels
-        $pdf->SetFont(
-            'Arial',
-            '',
-            $lblSz
-        );
-
-        $pdf->SetTextColor(
-            150,
-            155,
-            160
-        );
-
-        $pdf->SetXY(
-            $seatX,
-            $y
-        );
-
-        $pdf->Cell(
-            $smallColW,
-            3.2,
-            'SEAT NO.',
-            0,
-            0
-        );
-
-        $pdf->SetXY(
-            $ticketX,
-            $y
-        );
-
-        $pdf->Cell(
-            $smallColW,
-            3.2,
-            'TICKET',
-            0,
-            0
-        );
-
-
-        // Seat
-        $pdf->SetFont(
-            'Arial',
-            'B',
-            $valSz
-        );
-
-        $pdf->SetTextColor(
-            ...$headerColor
-        );
-
-        $seatLines = $wrapText(
-            $seatNumber,
-            $smallColW
-        );
-
-        $seatY =
-            $y +
-            3.6;
-
-        foreach ($seatLines as $line) {
-
-            $pdf->SetXY(
-                $seatX,
-                $seatY
-            );
-
-            $pdf->Cell(
-                $smallColW,
-                4.2,
-                $line,
-                0,
-                1,
-                'L'
-            );
-
-            $seatY += 4.2;
-        }
-
-
-        // Ticket code
-        $pdf->SetTextColor(
-            26,
-            26,
-            26
-        );
-
-        $ticketLines = $wrapText(
-            $ticketCode,
-            $smallColW
-        );
-
-        $ticketY =
-            $y +
-            3.6;
-
-        foreach ($ticketLines as $line) {
-
-            $pdf->SetXY(
-                $ticketX,
-                $ticketY
-            );
-
-            $pdf->Cell(
-                $smallColW,
-                4.2,
-                $line,
-                0,
-                1,
-                'L'
-            );
-
-            $ticketY += 4.2;
-        }
-
-        $pdf->SetTextColor(
-            0,
-            0,
-            0
-        );
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | RIGHT COLUMN
-        |--------------------------------------------------------------------------
-        */
-        $y = $bodyTop + 5;
-
-        $direction =
-            ($upload['direction'] === 'RETURN')
-                ? 'Return'
-                : 'Departure';
-
-
-        // DATE
-        $height = $fieldMain(
-            $col2X,
-            $y,
-            'Date',
-            $formattedDate
-        );
-
-        $y += max(
-            10,
-            $height + 1.5
-        );
-
-
-        // ORIGIN (FROM)
-        $origin = $upload['origin'] ?: 'Baywalk';
-        $height = $fieldMain(
-            $col2X,
-            $y,
-            'From',
-            $origin
-        );
-
-        $y += max(
-            10,
-            $height + 1.5
-        );
-
-
-        // DESTINATION (TO)
+        // FROM | TO / DIRECTION
+        $direction   = ($upload['direction'] === 'RETURN') ? 'Return' : 'Departure';
+        $origin      = $upload['origin'] ?: 'Baywalk';
         $destination = $upload['destination'] ?: 'N/A';
-        if ($destination !== 'N/A') {
-            $height = $fieldMain(
-                $col2X,
-                $y,
-                'To',
-                $destination
-            );
 
-            $y += max(
-                10,
-                $height + 1.5
-            );
-        }
+        $h1 = $fieldStacked($contentX, $y, $halfW, 'From', $origin, [26,26,26], 5.5, 7.5);
+        $h2 = ($destination !== 'N/A')
+            ? $fieldStacked($col2X, $y, $halfW, 'To', $destination, [26,26,26], 5.5, 7.5)
+            : $fieldStacked($col2X, $y, $halfW, 'Direction', $direction, [26,26,26], 5.5, 7.5);
+        $y += max(8, max($h1, $h2) + 1);
 
+        // SEAT | TICKET CODE
+        $fieldStacked($contentX, $y, $halfW, 'Seat No.', $seatNumber, $headerColor, 5.5, 9.0);
+        $fieldStacked($col2X,    $y, $halfW, 'Ticket', $ticketCode, [26,26,26], 5.5, 6.5);
 
-        // BOAT
-        $height = $fieldMain(
-            $col2X,
-            $y,
-            'Boat',
-            $boatName
-        );
-
-        $y += max(
-            10,
-            $height + 1.5
-        );
-
-
-        // DIRECTION
-        $height = $fieldMain(
-            $col2X,
-            $y,
-            'Direction',
-            $direction
-        );
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | CAPTAIN
-        |--------------------------------------------------------------------------
-        */
+        // ── Captain footer ─────────────────────────────────────
         if ($captainName) {
-
-            $captainText =
-                'Capt. ' .
-                $captainName;
-
-            $pdf->SetFont(
-                'Arial',
-                '',
-                5.5
-            );
-
-            $pdf->SetTextColor(
-                180,
-                180,
-                180
-            );
-
-            $captainLines = $wrapText(
-                $captainText,
-                $colW
-            );
-
-            $captainY =
-                $y +
-                max(
-                    10,
-                    $height + 1.5
-                );
-
-            foreach ($captainLines as $line) {
-
-                $pdf->SetXY(
-                    $col2X,
-                    $captainY
-                );
-
-                $pdf->Cell(
-                    $colW,
-                    3.5,
-                    $line,
-                    0,
-                    1,
-                    'L'
-                );
-
-                $captainY += 3.5;
-            }
-
-            $pdf->SetTextColor(
-                0,
-                0,
-                0
-            );
+            $pdf->SetFont('Arial', '', 5.5);
+            $pdf->SetTextColor(150, 155, 160);
+            $pdf->SetXY($cardX, $cardY + $cardH - 4);
+            $pdf->Cell($cardW, 3, 'Capt. ' . $captainName, 0, 0, 'C');
+            $pdf->SetTextColor(0, 0, 0);
         }
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | QR CODE
-        |--------------------------------------------------------------------------
-        */
-        if (
-            $qrFilePath &&
-            file_exists($qrFilePath)
-        ) {
-
-            $pdf->Image(
-                $qrFilePath,
-                $qrX,
-                $bodyTop + 4,
-                $qrSize,
-                $qrSize,
-                'PNG'
-            );
-
-            $pdf->SetFont(
-                'Arial',
-                'B',
-                6.5
-            );
-
-            $pdf->SetTextColor(
-                150,
-                155,
-                160
-            );
-
-            $pdf->SetXY(
-                $qrX,
-                $bodyTop +
-                4 +
-                $qrSize +
-                2
-            );
-
-            $pdf->Cell(
-                $qrSize,
-                3.5,
-                'SCAN TO CHECK-IN',
-                0,
-                0,
-                'C'
-            );
-
-            $pdf->SetTextColor(
-                0,
-                0,
-                0
-            );
-        }
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | STUB
-        |--------------------------------------------------------------------------
-        */
-        $stubX =
-            $perfX +
-            4;
-
-        $stubW =
-            ($cardX + $cardW) -
-            $stubX -
-            4;
-
-        $stubHalf =
-            ($stubW - 3) /
-            2;
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | STUB ROW 1 - GROUP
-        |--------------------------------------------------------------------------
-        */
-        $sy = $bodyTop + 5;
-
-        $hGroup = $fieldStub(
-            $stubX,
-            $sy,
-            $stubW,
-            'Group',
-            $groupName
-        );
-
-        $sy += max(
-            10,
-            $hGroup + 1.5
-        );
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | STUB ROW 2 - PASSENGER
-        |--------------------------------------------------------------------------
-        */
-        $hPassenger = $fieldStub(
-            $stubX,
-            $sy,
-            $stubW,
-            'Passenger',
-            $passengerName
-        );
-
-        $sy += max(
-            10,
-            $hPassenger + 1.5
-        );
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | STUB ROW 3
-        | Boarding + Type
-        |--------------------------------------------------------------------------
-        */
-        $typeX =
-            $stubX +
-            $stubHalf +
-            3;
-
-        $hBoarding = $fieldStub(
-            $stubX,
-            $sy,
-            $stubHalf,
-            'Boarding',
-            $boardingTime
-        );
-
-        $hType = $fieldStub(
-            $typeX,
-            $sy,
-            $stubHalf,
-            'Type',
-            $ket ?: $direction
-        );
-
-        $sy += max(
-            10,
-            max(
-                $hBoarding,
-                $hType
-            ) + 1.5
-        );
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | STUB ROW 4
-        | From + To (Origin & Destination)
-        |--------------------------------------------------------------------------
-        */
-        if ($destination !== 'N/A') {
-            $hFrom = $fieldStub(
-                $stubX,
-                $sy,
-                $stubHalf,
-                'From',
-                $origin
-            );
-
-            $hTo = $fieldStub(
-                $typeX,
-                $sy,
-                $stubHalf,
-                'To',
-                $destination
-            );
-
-            $sy += max(
-                10,
-                max(
-                    $hFrom,
-                    $hTo
-                ) + 1.5
-            );
-        }
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | STUB ROW 5
-        | Boat + Seat
-        |--------------------------------------------------------------------------
-        */
-        $hBoat = $fieldStub(
-            $stubX,
-            $sy,
-            $stubHalf,
-            'Boat',
-            $boatName
-        );
-
-        $hSeat = $fieldStub(
-            $typeX,
-            $sy,
-            $stubHalf,
-            'Seat',
-            $seatNumber,
-            $headerColor
-        );
-
-        $sy += max(
-            10,
-            max(
-                $hBoat,
-                $hSeat
-            ) + 1.5
-        );
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | STUB ROW 6 - TICKET CODE
-        |--------------------------------------------------------------------------
-        */
-        $fieldStub(
-            $stubX,
-            $sy,
-            $stubW,
-            'Ticket Code',
-            $ticketCode
-        );
     }
-
 
     // ── Clean up temporary QR files ──────────────────────────
     foreach ($qrFiles as $f) {
         @unlink($f);
     }
 
-
     // ── Output PDF ───────────────────────────────────────────
-    $this->response->setContentType(
-        'application/pdf'
-    );
+    $this->response->setContentType('application/pdf');
 
     $pdf->Output(
         'I',
-        'boarding-pass-manifest-' .
-        $uploadId .
-        '.pdf'
+        'boarding-pass-manifest-' . $uploadId . '.pdf'
     );
 }
-
 
     public function boardingPassOld(int $uploadId)
     {
@@ -3888,10 +2856,15 @@ public function boardingPass(int $uploadId)
 
         $db = \Config\Database::connect();
 
-        // Try to find by ticket ID, passport, or group name
+        // Strip the QR prefix if present: "NAMA_MARINE_MANIFEST_TKT-123-0001" → "TKT-123-0001"
+        $cleanCode = preg_replace('/^NAMA_MARINE_MANIFEST_/i', '', $code);
+
+        // Try: ticket_code, id, id_passport, group_name
         $ticket = $db->table('manifest_tickets')
             ->groupStart()
-                ->where('id', $code)
+                ->where('ticket_code', $cleanCode)
+                ->orWhere('ticket_code', $code)
+                ->orWhere('id', (int)$code)
                 ->orWhere('id_passport', $code)
                 ->orWhere('group_name', $code)
             ->groupEnd()
@@ -3924,12 +2897,13 @@ public function boardingPass(int $uploadId)
             ->getResultArray();
 
         return $this->jsonResponse([
-            'group_name' => $ticket['group_name'],
-            'upload_id' => $ticket['upload_id'],
-            'boat_name' => $upload['boat_name'],
-            'trip_date' => $upload['trip_date'],
-            'direction' => $upload['direction'],
-            'tickets' => $tickets
+            'scanned_ticket_id' => (int)$ticket['id'],
+            'group_name'  => $ticket['group_name'],
+            'upload_id'   => $ticket['upload_id'],
+            'boat_name'   => $upload['boat_name'],
+            'trip_date'   => $upload['trip_date'],
+            'direction'   => $upload['direction'],
+            'tickets'     => $tickets,
         ]);
     }
 

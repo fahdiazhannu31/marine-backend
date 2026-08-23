@@ -812,6 +812,43 @@ class ApiController extends BaseController
             ->get()
             ->getResultArray();
 
+        // ── Manifest summary (all-time, across all uploads) ──
+        $manifestRow = $db->query("
+            SELECT
+                COALESCE(SUM(mu.total_pax), 0)       AS total_pax,
+                COALESCE(SUM(mu.overnight_count), 0)  AS overnight,
+                COALESCE(SUM(mu.daytrip_count), 0)    AS daytrip,
+                COALESCE(SUM(mu.staff_count), 0)      AS staff,
+                COALESCE(SUM(mu.foc_count), 0)        AS foc,
+                COALESCE(SUM(mu.vendor_count), 0)     AS vendor,
+                COUNT(DISTINCT mu.id)                 AS upload_count
+            FROM manifest_uploads mu
+        ")->getRowArray();
+
+        $manifestCheckedIn = (int) $db->query("
+            SELECT COUNT(*) AS cnt
+            FROM manifest_tickets mt
+            WHERE mt.cancelled = 0 AND mt.checked_in = 1
+        ")->getRowArray()['cnt'];
+
+        // Manifest uploads within the selected date range
+        $manifestRangeRow = $db->query("
+            SELECT
+                COALESCE(SUM(mu.total_pax), 0)       AS total_pax,
+                COALESCE(SUM(mu.overnight_count), 0)  AS overnight,
+                COALESCE(SUM(mu.daytrip_count), 0)    AS daytrip
+            FROM manifest_uploads mu
+            WHERE mu.trip_date >= ?
+        ", [$startDate])->getRowArray();
+
+        $manifestCheckedInRange = (int) $db->query("
+            SELECT COUNT(*) AS cnt
+            FROM manifest_tickets mt
+            JOIN manifest_uploads mu ON mu.id = mt.upload_id
+            WHERE mt.cancelled = 0 AND mt.checked_in = 1
+              AND mu.trip_date >= ?
+        ", [$startDate])->getRowArray()['cnt'];
+
         return $this->jsonResponse([
             'status' => 'success',
             'data' => [
@@ -824,6 +861,22 @@ class ApiController extends BaseController
                     'settled_count'      => $statusCounts['SETTLED'] ?? 0,
                     'paid_count'         => $statusCounts['PAID'] ?? 0,
                     'verification_count' => $statusCounts['ON VERIFICATION'] ?? 0,
+                ],
+                'manifest_summary' => [
+                    // All-time totals
+                    'total_pax'        => (int) ($manifestRow['total_pax'] ?? 0),
+                    'checked_in'       => $manifestCheckedIn,
+                    'overnight'        => (int) ($manifestRow['overnight'] ?? 0),
+                    'daytrip'          => (int) ($manifestRow['daytrip'] ?? 0),
+                    'staff'            => (int) ($manifestRow['staff'] ?? 0),
+                    'foc'              => (int) ($manifestRow['foc'] ?? 0),
+                    'vendor'           => (int) ($manifestRow['vendor'] ?? 0),
+                    'upload_count'     => (int) ($manifestRow['upload_count'] ?? 0),
+                    // Within selected range
+                    'range_pax'        => (int) ($manifestRangeRow['total_pax'] ?? 0),
+                    'range_checked_in' => $manifestCheckedInRange,
+                    'range_overnight'  => (int) ($manifestRangeRow['overnight'] ?? 0),
+                    'range_daytrip'    => (int) ($manifestRangeRow['daytrip'] ?? 0),
                 ],
                 'status_breakdown'    => $statusBreakdown,
                 'revenue_trend'       => $revenueTrend,
@@ -1183,7 +1236,33 @@ class ApiController extends BaseController
                     SELECT SUM(p.jml_pax) FROM payments p
                     WHERE p.status = 'SETTLED' AND p.attendance IS NOT NULL
                       AND (p.schedule_departure_id = s.id OR p.schedule_return_id = s.id)
-                ), 0) as checked_in_pax
+                ), 0) as checked_in_pax,
+                -- Manifest upload: total non-cancelled pax for this schedule
+                COALESCE((
+                    SELECT COUNT(mt.id)
+                    FROM manifest_tickets mt
+                    JOIN manifest_uploads mu ON mu.id = mt.upload_id
+                    WHERE mu.schedule_id = s.id AND mt.cancelled = 0
+                ), 0) as manifest_pax,
+                -- Manifest upload: checked-in pax
+                COALESCE((
+                    SELECT COUNT(mt.id)
+                    FROM manifest_tickets mt
+                    JOIN manifest_uploads mu ON mu.id = mt.upload_id
+                    WHERE mu.schedule_id = s.id AND mt.cancelled = 0 AND mt.checked_in = 1
+                ), 0) as manifest_checked_in,
+                -- Manifest upload: overnight count
+                COALESCE((
+                    SELECT SUM(mu.overnight_count)
+                    FROM manifest_uploads mu
+                    WHERE mu.schedule_id = s.id
+                ), 0) as manifest_overnight,
+                -- Manifest upload: daytrip count
+                COALESCE((
+                    SELECT SUM(mu.daytrip_count)
+                    FROM manifest_uploads mu
+                    WHERE mu.schedule_id = s.id
+                ), 0) as manifest_daytrip
             FROM schedule s
             LEFT JOIN boat b ON b.id = s.boat_id
             WHERE s.date >= CURDATE() AND s.date < DATE_ADD(CURDATE(), INTERVAL 14 DAY)
@@ -1196,20 +1275,32 @@ class ApiController extends BaseController
         $todayTomorrow    = [];
 
         foreach ($upcomingSchedules as $s) {
-            $capacity   = (int) ($s['capacity'] ?? 0);
-            $bookedPax  = (int) $s['booked_pax'];
-            $fillPct    = $capacity > 0 ? round(($bookedPax / $capacity) * 100) : 0;
-            $scheduleDate = substr($s['date'], 0, 10);
+            $capacity        = (int) ($s['capacity'] ?? 0);
+            $bookedPax       = (int) $s['booked_pax'];
+            $manifestPax     = (int) $s['manifest_pax'];
+            // Total pax = online bookings + manifest upload (non-overlapping sources)
+            $totalPax        = $bookedPax + $manifestPax;
+            $fillPct         = $capacity > 0 ? round(($totalPax / $capacity) * 100) : 0;
+            $scheduleDate    = substr($s['date'], 0, 10);
 
             $entry = [
-                'id'             => (int) $s['id'],
-                'type'           => $s['type'],
-                'date'           => $s['date'],
-                'boat_name'      => $s['boat_name'],
-                'capacity'       => $capacity,
-                'booked_pax'     => $bookedPax,
-                'checked_in_pax' => (int) $s['checked_in_pax'],
-                'fill_percent'   => $fillPct,
+                'id'                  => (int) $s['id'],
+                'type'                => $s['type'],
+                'date'                => $s['date'],
+                'boat_name'           => $s['boat_name'],
+                'capacity'            => $capacity,
+                // Online booking stats
+                'booked_pax'          => $bookedPax,
+                'checked_in_pax'      => (int) $s['checked_in_pax'],
+                // Manifest upload stats
+                'manifest_pax'        => $manifestPax,
+                'manifest_checked_in' => (int) $s['manifest_checked_in'],
+                'manifest_overnight'  => (int) $s['manifest_overnight'],
+                'manifest_daytrip'    => (int) $s['manifest_daytrip'],
+                // Combined
+                'total_pax'           => $totalPax,
+                'total_checked_in'    => (int) $s['checked_in_pax'] + (int) $s['manifest_checked_in'],
+                'fill_percent'        => $fillPct,
             ];
 
             if ($capacity > 0 && $fillPct >= 80) {

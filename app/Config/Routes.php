@@ -169,6 +169,21 @@ $routes->get('/api/admin/manifest/final/(:num)',                     'ManifestUp
 $routes->get('/api/admin/manifest/export-excel/(:num)',              'ManifestUploadController::exportExcel/$1');
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─── Crew Management ─────────────────────────────────────────────────────────
+$routes->options('/api/admin/crew/(:any)', 'CrewController::preflight');
+$routes->get('/api/admin/crew',                                   'CrewController::index');
+$routes->post('/api/admin/crew',                                  'CrewController::create');
+$routes->get('/api/admin/crew/assignments',                       'CrewController::listAssignments');
+$routes->post('/api/admin/crew/assignments',                      'CrewController::createAssignment');
+$routes->delete('/api/admin/crew/assignments/(:num)',             'CrewController::deleteAssignment/$1');
+$routes->get('/api/admin/crew/checkin-by-qr/(:any)',              'CrewController::checkinByQr/$1');
+$routes->post('/api/admin/crew/checkin',                          'CrewController::checkin');
+$routes->get('/api/admin/crew/(:num)',                            'CrewController::show/$1');
+$routes->put('/api/admin/crew/(:num)',                            'CrewController::update/$1');
+$routes->delete('/api/admin/crew/(:num)',                         'CrewController::delete/$1');
+$routes->get('/api/admin/crew/(:num)/qr-pdf',                    'CrewController::qrPdf/$1');
+// ─────────────────────────────────────────────────────────────────────────────
+
 // Master data CRUD (boats, packages, schedules)
 $routes->get('/api/admin/boats', 'AdminCrudController::boats');
 $routes->post('/api/admin/boats', 'AdminCrudController::createBoat');
