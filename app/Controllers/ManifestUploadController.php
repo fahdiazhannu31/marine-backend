@@ -3010,4 +3010,118 @@ public function boardingPass(int $uploadId)
     {
         return $this->options();
     }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // GET /api/admin/manifest/crew-checkins/{scheduleId}
+    // Returns crew members assigned to this schedule + their check-in status
+    // ═══════════════════════════════════════════════════════════════════
+    public function getCrewCheckins(int $scheduleId)
+    {
+        if (!$this->isAdminUser()) {
+            return $this->jsonResponse(['error' => 'Forbidden.'], 403);
+        }
+
+        $db    = \Config\Database::connect();
+        $today = date('Y-m-d');
+
+        // Get schedule info to know trip_date
+        $schedule = $db->table('schedule')
+            ->where('id', $scheduleId)
+            ->get()->getFirstRow('array');
+
+        $tripDate = $schedule ? substr($schedule['date'], 0, 10) : $today;
+
+        // All crew assigned to this schedule OR same trip_date
+        $assignments = $db->table('crew_assignments ca')
+            ->select('ca.id as assignment_id, ca.direction, ca.notes as assignment_notes,
+                      c.id as crew_id, c.name, c.role, c.phone, c.qr_code,
+                      b.boat_name')
+            ->join('crew c',  'c.id = ca.crew_id',  'left')
+            ->join('boat b',  'b.id = ca.boat_id',  'left')
+            ->groupStart()
+                ->where('ca.schedule_id', $scheduleId)
+                ->orWhere('ca.trip_date',  $tripDate)
+            ->groupEnd()
+            ->where('c.active', 1)
+            ->orderBy('c.role', 'ASC')
+            ->orderBy('c.name', 'ASC')
+            ->get()->getResultArray();
+
+        foreach ($assignments as &$row) {
+            $checkin = $db->table('crew_checkins')
+                ->where('crew_id', $row['crew_id'])
+                ->groupStart()
+                    ->where('assignment_id', $row['assignment_id'])
+                    ->orWhere('DATE(checked_in_at)', $tripDate)
+                ->groupEnd()
+                ->orderBy('id', 'DESC')
+                ->get()->getFirstRow('array');
+
+            $row['checked_in']    = $checkin ? true : false;
+            $row['checked_in_at'] = $checkin['checked_in_at'] ?? null;
+        }
+        unset($row);
+
+        return $this->jsonResponse([
+            'schedule_id' => $scheduleId,
+            'trip_date'   => $tripDate,
+            'crew'        => $assignments,
+        ]);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // POST /api/admin/manifest/tickets/switch-seat
+    // Body: { ticket_a_id, ticket_b_id }
+    // Swaps the seat assignments between two passengers.
+    // ═══════════════════════════════════════════════════════════════════
+    public function switchSeat()
+    {
+        if (!$this->isAdminUser()) {
+            return $this->jsonResponse(['error' => 'Forbidden.'], 403);
+        }
+
+        $db   = \Config\Database::connect();
+        $body = $this->request->getJSON(true) ?? [];
+
+        $idA = (int) ($body['ticket_a_id'] ?? 0);
+        $idB = (int) ($body['ticket_b_id'] ?? 0);
+
+        if (!$idA || !$idB || $idA === $idB) {
+            return $this->jsonResponse(['error' => 'ticket_a_id and ticket_b_id are required and must be different.'], 422);
+        }
+
+        $ticketA = $db->table('manifest_tickets')->where('id', $idA)->get()->getFirstRow('array');
+        $ticketB = $db->table('manifest_tickets')->where('id', $idB)->get()->getFirstRow('array');
+
+        if (!$ticketA || !$ticketB) {
+            return $this->jsonResponse(['error' => 'One or both tickets not found.'], 404);
+        }
+
+        // Swap seat_id + seat_number
+        $db->table('manifest_tickets')->update([
+            'seat_id'     => $ticketB['seat_id'],
+            'seat_number' => $ticketB['seat_number'],
+        ], ['id' => $idA]);
+
+        $db->table('manifest_tickets')->update([
+            'seat_id'     => $ticketA['seat_id'],
+            'seat_number' => $ticketA['seat_number'],
+        ], ['id' => $idB]);
+
+        return $this->jsonResponse([
+            'message'  => 'Seats switched successfully.',
+            'ticket_a' => [
+                'id'          => $idA,
+                'name'        => $ticketA['passenger_name'],
+                'old_seat'    => $ticketA['seat_number'],
+                'new_seat'    => $ticketB['seat_number'],
+            ],
+            'ticket_b' => [
+                'id'          => $idB,
+                'name'        => $ticketB['passenger_name'],
+                'old_seat'    => $ticketB['seat_number'],
+                'new_seat'    => $ticketA['seat_number'],
+            ],
+        ]);
+    }
 }

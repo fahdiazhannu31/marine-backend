@@ -167,6 +167,8 @@ $routes->get('/api/admin/manifest/group-by-code/(:any)',             'ManifestUp
 $routes->post('/api/admin/manifest/checkin-bulk',                    'ManifestUploadController::checkinBulk');
 $routes->get('/api/admin/manifest/final/(:num)',                     'ManifestUploadController::getManifestFinal/$1');
 $routes->get('/api/admin/manifest/export-excel/(:num)',              'ManifestUploadController::exportExcel/$1');
+$routes->get('/api/admin/manifest/crew-checkins/(:num)',             'ManifestUploadController::getCrewCheckins/$1');
+$routes->post('/api/admin/manifest/tickets/switch-seat',             'ManifestUploadController::switchSeat');
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ─── Crew Management ─────────────────────────────────────────────────────────
