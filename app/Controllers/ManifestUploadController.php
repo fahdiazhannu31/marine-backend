@@ -2847,7 +2847,7 @@ public function boardingPass(int $uploadId)
     // ═══════════════════════════════════════════
 
     // GET /api/admin/manifest/group-by-code/{code}
-    // Fetch group data by ticket ID, group name, or any identifier
+    // Handles both passenger QR (NAMA_MARINE_MANIFEST_*) and crew QR (CREW_*)
     public function getGroupByCode(string $code)
     {
         if (!$this->isAdminUser()) {
@@ -2856,6 +2856,70 @@ public function boardingPass(int $uploadId)
 
         $db = \Config\Database::connect();
 
+        // ── CREW QR: starts with CREW_ ────────────────────────────────────
+        if (str_starts_with(strtoupper($code), 'CREW_')) {
+            $crew = $db->table('crew')
+                ->where('qr_code', $code)
+                ->get()->getFirstRow('array');
+
+            if (!$crew) {
+                return $this->jsonResponse(['error' => 'Crew QR code tidak dikenali.'], 404);
+            }
+
+            $today = date('Y-m-d');
+            $now   = date('Y-m-d H:i:s');
+
+            // Today's assignments
+            $assignments = $db->table('crew_assignments ca')
+                ->select('ca.*, b.boat_name, s.date as schedule_date')
+                ->join('boat b', 'b.id = ca.boat_id', 'left')
+                ->join('schedule s', 's.id = ca.schedule_id', 'left')
+                ->where('ca.crew_id', $crew['id'])
+                ->where('ca.trip_date', $today)
+                ->get()->getResultArray();
+
+            // Already checked in today?
+            $existingCheckin = $db->table('crew_checkins')
+                ->where('crew_id', $crew['id'])
+                ->where('DATE(checked_in_at)', $today)
+                ->orderBy('id', 'DESC')
+                ->get()->getFirstRow('array');
+
+            $alreadyIn = $existingCheckin !== null;
+
+            // Auto check-in if not already done
+            if (!$alreadyIn) {
+                $assignment = !empty($assignments) ? $assignments[0] : null;
+                $db->table('crew_checkins')->insert([
+                    'crew_id'       => $crew['id'],
+                    'assignment_id' => $assignment['id'] ?? null,
+                    'schedule_id'   => $assignment['schedule_id'] ?? null,
+                    'checked_in_at' => $now,
+                    'note'          => 'Auto check-in via scanner',
+                ]);
+            }
+
+            // Fetch fresh checkins
+            $checkinsToday = $db->table('crew_checkins')
+                ->where('crew_id', $crew['id'])
+                ->where('DATE(checked_in_at)', $today)
+                ->orderBy('checked_in_at', 'DESC')
+                ->get()->getResultArray();
+
+            return $this->jsonResponse([
+                'type'               => 'crew',
+                'crew'               => $crew,
+                'today_assignments'  => $assignments,
+                'checkins_today'     => $checkinsToday,
+                'already_checked_in' => $alreadyIn,
+                'just_checked_in'    => !$alreadyIn,
+                'checked_in_at'      => $alreadyIn
+                    ? $existingCheckin['checked_in_at']
+                    : $now,
+            ]);
+        }
+
+        // ── PASSENGER QR ──────────────────────────────────────────────────
         // Strip the QR prefix if present: "NAMA_MARINE_MANIFEST_TKT-123-0001" → "TKT-123-0001"
         $cleanCode = preg_replace('/^NAMA_MARINE_MANIFEST_/i', '', $code);
 
@@ -2897,13 +2961,14 @@ public function boardingPass(int $uploadId)
             ->getResultArray();
 
         return $this->jsonResponse([
+            'type'              => 'passenger',
             'scanned_ticket_id' => (int)$ticket['id'],
-            'group_name'  => $ticket['group_name'],
-            'upload_id'   => $ticket['upload_id'],
-            'boat_name'   => $upload['boat_name'],
-            'trip_date'   => $upload['trip_date'],
-            'direction'   => $upload['direction'],
-            'tickets'     => $tickets,
+            'group_name'        => $ticket['group_name'],
+            'upload_id'         => $ticket['upload_id'],
+            'boat_name'         => $upload['boat_name'],
+            'trip_date'         => $upload['trip_date'],
+            'direction'         => $upload['direction'],
+            'tickets'           => $tickets,
         ]);
     }
 
