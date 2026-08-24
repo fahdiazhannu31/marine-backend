@@ -26,6 +26,9 @@ class AuthApiController extends BaseController
         'http://localhost:3000',
         'http://localhost:5173',
         'http://localhost:5174',
+        'https://namamarine.cloud',
+        'http://namamarine.cloud',
+        'https://www.namamarine.cloud',
     ];
 
     private function getAllowedOrigin(): string

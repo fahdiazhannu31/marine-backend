@@ -19,11 +19,18 @@ class ApiTokenModel extends Model
      */
     public function generateFor(int $userId, int $ttlHours = 720): string
     {
-        // Revoke previous tokens for this user
-        $this->where('user_id', $userId)->delete();
+        // NOTE: We no longer revoke previous tokens on new login.
+        // This allows the same user to be logged in from multiple devices
+        // (e.g. admin PC + PDA scanner) simultaneously.
+        // Old expired tokens are cleaned up separately.
 
-        $raw   = bin2hex(random_bytes(32));          // 64-char hex
-        $token = hash('sha256', $raw);               // store hash only
+        // Clean up only EXPIRED tokens for this user (not active ones)
+        $this->where('user_id', $userId)
+             ->where('expires_at <=', date('Y-m-d H:i:s'))
+             ->delete();
+
+        $raw   = bin2hex(random_bytes(32));
+        $token = hash('sha256', $raw);
 
         $this->insert([
             'user_id'    => $userId,
@@ -31,7 +38,7 @@ class ApiTokenModel extends Model
             'expires_at' => date('Y-m-d H:i:s', time() + $ttlHours * 3600),
         ]);
 
-        return $raw;  // return plain token to caller (shown once)
+        return $raw;
     }
 
     /**
