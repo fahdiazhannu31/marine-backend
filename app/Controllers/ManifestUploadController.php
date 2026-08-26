@@ -1799,6 +1799,106 @@ public function boardingPass(int $uploadId)
             $pdf->Cell($cardW, 3, 'Capt. ' . $captainName, 0, 0, 'C');
             $pdf->SetTextColor(0, 0, 0);
         }
+
+        // ── OVERNIGHT: add return boarding pass page ──────────
+        if (str_contains($ket, 'OVERNIGHT')) {
+
+            $returnTicketCode = $ticketCode . '-R';
+            $returnQrContent  = 'NAMA_MARINE_MANIFEST_' . $returnTicketCode;
+            $returnQrPath     = $qrDir . uniqid('mp_ret_') . '.png';
+            $returnQrOk       = false;
+
+            try {
+                $writer2  = new \Endroid\QrCode\Writer\PngWriter();
+                $qrCode2  = \Endroid\QrCode\QrCode::create($returnQrContent)
+                    ->setEncoding(new \Endroid\QrCode\Encoding\Encoding('UTF-8'))
+                    ->setSize(300)->setMargin(8)
+                    ->setForegroundColor(new \Endroid\QrCode\Color\Color(0, 0, 0))
+                    ->setBackgroundColor(new \Endroid\QrCode\Color\Color(255, 255, 255));
+                $writer2->write($qrCode2)->saveToFile($returnQrPath);
+                $qrFiles[]   = $returnQrPath;
+                $returnQrOk  = true;
+            } catch (\Exception $e) {
+                $returnQrPath = null;
+            }
+
+            $pdf->AddPage();
+
+            // Same card dimensions
+            $pdf->SetDrawColor(...$borderGray);
+            $pdf->SetLineWidth(0.4);
+            $pdf->Rect($cardX, $cardY, $cardW, $cardH);
+
+            // Header (same color)
+            $pdf->SetFillColor(...$headerColor);
+            $pdf->Rect($cardX, $cardY, $cardW, $headerH, 'F');
+
+            $pdf->YachtIconAuto($cardX + 2.5, $cardY + 1.5, 8, 7);
+
+            $pdf->SetTextColor(255, 255, 255);
+            $pdf->SetFont('Arial', 'B', 10);
+            $pdf->SetXY($cardX + 12, $cardY + 2.5);
+            $pdf->Cell(50, 5.5, 'Boarding Pass', 0, 0, 'L');
+
+            $pdf->SetFont('Arial', 'B', 8);
+            $pdf->SetXY($cardX + 60, $cardY + 2);
+            $pdf->Cell($cardW - 62, 4, strtoupper($boatName), 0, 0, 'C');
+
+            // Return label
+            $pdf->SetFont('Arial', 'B', 6.5);
+            $pdf->SetXY($cardX + 60, $cardY + 6.5);
+            $pdf->Cell($cardW - 62, 3.5, 'OVERNIGHT - RETURN', 0, 0, 'C');
+
+            $pdf->SetTextColor(0, 0, 0);
+
+            // QR (right)
+            if ($returnQrOk && $returnQrPath && file_exists($returnQrPath)) {
+                $pdf->Image($returnQrPath, $qrX, $qrY, $qrSize, $qrSize, 'PNG');
+                $pdf->SetFont('Arial', 'B', 5.5);
+                $pdf->SetTextColor(...$labelGray);
+                $pdf->SetXY($qrX, $qrY + $qrSize + 0.5);
+                $pdf->Cell($qrSize, 3, 'SCAN TO CHECK-IN', 0, 0, 'C');
+                $pdf->SetTextColor(0, 0, 0);
+            }
+
+            // Dotted divider
+            $pdf->SetFillColor(...$borderGray);
+            $pdf->DottedLine($divX, $bodyTop, $divX, $cardY + $cardH - 3, 0.3, 1.4);
+
+            // Info column
+            $ry = $bodyTop;
+
+            $h = $fieldStacked($contentX, $ry, $infoW, 'Group', $groupName, [26,26,26], 5.5, 8.5);
+            $ry += max(8, $h + 1);
+
+            $h = $fieldStacked($contentX, $ry, $infoW, 'Passenger', $passengerName, [26,26,26], 5.5, 8.0);
+            $ry += max(8, $h + 1);
+
+            // Return date (same date for now — overnight is same trip date)
+            $h1 = $fieldStacked($contentX, $ry, $halfW, 'Date', $formattedDate, [26,26,26], 5.5, 7.5);
+            $h2 = $fieldStacked($col2X,    $ry, $halfW, 'Type', 'Return', [26,26,26], 5.5, 7.5);
+            $ry += max(8, max($h1, $h2) + 1);
+
+            // Swapped route: destination → origin
+            $retFrom = $destination !== 'N/A' ? $destination : 'Sepa';
+            $retTo   = $origin;
+
+            $h1 = $fieldStacked($contentX, $ry, $halfW, 'From', $retFrom, [26,26,26], 5.5, 7.5);
+            $h2 = $fieldStacked($col2X,    $ry, $halfW, 'To',   $retTo,   [26,26,26], 5.5, 7.5);
+            $ry += max(8, max($h1, $h2) + 1);
+
+            // Seat (same seat) | Return ticket code
+            $fieldStacked($contentX, $ry, $halfW, 'Seat No.', $seatNumber, $headerColor, 5.5, 9.0);
+            $fieldStacked($col2X,    $ry, $halfW, 'Ticket', $returnTicketCode, [26,26,26], 5.5, 6.5);
+
+            if ($captainName) {
+                $pdf->SetFont('Arial', '', 5.5);
+                $pdf->SetTextColor(150, 155, 160);
+                $pdf->SetXY($cardX, $cardY + $cardH - 4);
+                $pdf->Cell($cardW, 3, 'Capt. ' . $captainName, 0, 0, 'C');
+                $pdf->SetTextColor(0, 0, 0);
+            }
+        }
     }
 
     // ── Clean up temporary QR files ──────────────────────────
@@ -2357,13 +2457,15 @@ public function boardingPass(int $uploadId)
 
     // GET /api/admin/manifest/final/{uploadId}
     // Returns manifest data in final format grouped by KET section
+    // ?view=return  →  only OVERNIGHT passengers, return route (origin↔destination swapped)
     public function getManifestFinal(int $uploadId)
     {
         if (!$this->isAdminUser()) {
             return $this->jsonResponse(['error' => 'Forbidden.'], 403);
         }
 
-        $db = \Config\Database::connect();
+        $db   = \Config\Database::connect();
+        $view = $this->request->getVar('view') ?? 'departure'; // 'departure' | 'return'
 
         // Upload meta
         $upload = $db->table('manifest_uploads as u')
@@ -2378,12 +2480,25 @@ public function boardingPass(int $uploadId)
         }
 
         // All tickets ordered by ket section then seq_no
-        $tickets = $db->table('manifest_tickets')
+        $qb = $db->table('manifest_tickets')
             ->where('upload_id', $uploadId)
             ->where('cancelled', 0)
-            ->orderBy('seq_no', 'ASC')
-            ->get()
-            ->getResultArray();
+            ->orderBy('seq_no', 'ASC');
+
+        // Return view: only OVERNIGHT passengers
+        if ($view === 'return') {
+            $qb->like('ket', 'OVERNIGHT', 'both');
+        }
+
+        $tickets = $qb->get()->getResultArray();
+
+        // For return view, swap origin/destination in upload meta
+        if ($view === 'return') {
+            $origOrigin      = $upload['origin'];
+            $upload['origin']      = $upload['destination'];
+            $upload['destination'] = $origOrigin;
+            $upload['direction']   = 'RETURN';
+        }
 
         // Group tickets by KET section
         $overnight = [];
@@ -2406,20 +2521,27 @@ public function boardingPass(int $uploadId)
         // Parse abk_names
         $abkNames = [];
         if (!empty($upload['abk_names'])) {
-            $decoded = json_decode($upload['abk_names'], true);
+            $decoded  = json_decode($upload['abk_names'], true);
             $abkNames = is_array($decoded) ? $decoded : [$upload['abk_names']];
         }
 
-        return $this->jsonResponse([
-            'upload'   => array_merge($upload, ['abk_names_array' => $abkNames]),
-            'sections' => [
+        $sections = $view === 'return'
+            // Return manifest: only overnight section
+            ? [['ket' => 'OVERNIGHT (RETURN)', 'tickets' => $overnight, 'count' => count($overnight)]]
+            // Departure manifest: all sections
+            : [
                 ['ket' => 'OVERNIGHT', 'tickets' => $overnight, 'count' => count($overnight)],
                 ['ket' => 'DAY TRIP',  'tickets' => $daytrip,   'count' => count($daytrip)],
                 ['ket' => 'STAFF',     'tickets' => $staff,     'count' => count($staff)],
                 ['ket' => 'FOC',       'tickets' => $foc,       'count' => count($foc)],
                 ['ket' => 'VENDOR',    'tickets' => $vendor,    'count' => count($vendor)],
-            ],
-            'total' => count($tickets),
+            ];
+
+        return $this->jsonResponse([
+            'upload'   => array_merge($upload, ['abk_names_array' => $abkNames]),
+            'sections' => $sections,
+            'total'    => count($tickets),
+            'view'     => $view,
         ]);
     }
 
