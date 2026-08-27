@@ -3042,17 +3042,23 @@ public function boardingPass(int $uploadId)
         }
 
         // ── PASSENGER QR ──────────────────────────────────────────────────
-        // Strip the QR prefix if present: "NAMA_MARINE_MANIFEST_TKT-123-0001" → "TKT-123-0001"
+        // Strip QR prefix: "NAMA_MARINE_MANIFEST_TKT-123-0001" → "TKT-123-0001"
         $cleanCode = preg_replace('/^NAMA_MARINE_MANIFEST_/i', '', $code);
+
+        // Detect return boarding pass: ticket code ends in -R (e.g. TKT-5-0001-R)
+        $isReturn  = preg_match('/-R$/i', $cleanCode);
+        // Strip the -R suffix so we find the base ticket in the database
+        $lookupCode = preg_replace('/-R$/i', '', $cleanCode);
 
         // Try: ticket_code, id, id_passport, group_name
         $ticket = $db->table('manifest_tickets')
             ->groupStart()
-                ->where('ticket_code', $cleanCode)
+                ->where('ticket_code', $lookupCode)
+                ->orWhere('ticket_code', $cleanCode)  // fallback: try with -R too
                 ->orWhere('ticket_code', $code)
                 ->orWhere('id', (int)$code)
-                ->orWhere('id_passport', $code)
-                ->orWhere('group_name', $code)
+                ->orWhere('id_passport', $lookupCode)
+                ->orWhere('group_name', $lookupCode)
             ->groupEnd()
             ->orderBy('id', 'DESC')
             ->get()
@@ -3085,11 +3091,12 @@ public function boardingPass(int $uploadId)
         return $this->jsonResponse([
             'type'              => 'passenger',
             'scanned_ticket_id' => (int)$ticket['id'],
+            'is_return'         => (bool)$isReturn,   // true when scanned from return boarding pass
             'group_name'        => $ticket['group_name'],
             'upload_id'         => $ticket['upload_id'],
             'boat_name'         => $upload['boat_name'],
             'trip_date'         => $upload['trip_date'],
-            'direction'         => $upload['direction'],
+            'direction'         => $isReturn ? 'RETURN' : $upload['direction'],
             'tickets'           => $tickets,
         ]);
     }
