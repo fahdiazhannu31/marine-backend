@@ -3266,6 +3266,76 @@ public function boardingPass(int $uploadId)
     }
 
     // ═══════════════════════════════════════════════════════════════════
+    // GET /api/admin/manifest/group-qr-codes/{uploadId}
+    // Fetch all group QR codes for viewing/download
+    // ═══════════════════════════════════════════════════════════════════
+    public function getGroupQrCodes(int $uploadId)
+    {
+        if (!$this->isAdminUser()) {
+            return $this->jsonResponse(['error' => 'Forbidden.'], 403);
+        }
+
+        $db = \Config\Database::connect();
+
+        // Get upload
+        $upload = $db->table('manifest_uploads')
+            ->where('id', $uploadId)
+            ->get()
+            ->getFirstRow('array');
+
+        if (!$upload) {
+            return $this->jsonResponse(['error' => 'Upload not found.'], 404);
+        }
+
+        // Parse group QR codes
+        $groupQrs = [];
+        try {
+            $groupQrs = json_decode($upload['group_qr_codes'], true) ?? [];
+        } catch (\Exception $e) {
+            return $this->jsonResponse(['error' => 'Failed to parse QR codes.'], 500);
+        }
+
+        if (empty($groupQrs)) {
+            return $this->jsonResponse(['error' => 'No QR codes generated for this upload.'], 404);
+        }
+
+        // Get group members count per group
+        $groupMembers = $db->table('manifest_tickets')
+            ->select('group_name, COUNT(*) as member_count')
+            ->where('upload_id', $uploadId)
+            ->where('cancelled', 0)
+            ->groupBy('group_name')
+            ->get()
+            ->getResultArray();
+
+        $memberMap = [];
+        foreach ($groupMembers as $gm) {
+            $memberMap[$gm['group_name']] = (int) $gm['member_count'];
+        }
+
+        // Build response with QR + group info
+        $result = [];
+        foreach ($groupQrs as $groupName => $qrData) {
+            $result[] = [
+                'group_name' => $groupName,
+                'member_count' => $memberMap[$groupName] ?? 0,
+                'qr_content' => $qrData['qr_content'] ?? null,
+                'qr_data_url' => $qrData['qr_data_url'] ?? null,
+            ];
+        }
+
+        return $this->jsonResponse([
+            'upload_id' => $uploadId,
+            'boat_name' => $upload['boat_name'],
+            'trip_date' => $upload['trip_date'],
+            'origin' => $upload['origin'],
+            'destination' => $upload['destination'],
+            'groups' => $result,
+            'total_groups' => count($result),
+        ]);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
     // POST /api/admin/manifest/send-group-qr-emails
     // Blast email: send group QR codes to all groups in a manifest upload
     // 
