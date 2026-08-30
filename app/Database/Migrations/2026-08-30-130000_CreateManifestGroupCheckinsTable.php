@@ -42,7 +42,6 @@ class CreateManifestGroupCheckinsTable extends Migration
         $this->forge->addKey(['upload_id', 'group_name'], 'manifest_group_checkins');
         $this->forge->addKey('checked_in_at', 'manifest_group_checkins');
     }
-    }
 
     public function down()
     {
