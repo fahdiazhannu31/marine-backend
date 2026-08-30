@@ -3625,8 +3625,12 @@ HTML;
     // Token = base64(uploadId|groupName)
     // Returns group info + all tickets for self-service boarding pass page
     // ═══════════════════════════════════════════════════════════════════
-    public function publicGroupBoardingPass(string $token)
+    public function publicGroupBoardingPass(string $token = '')
     {
+        // Support both path param and query param (?t=token)
+        if (!$token) {
+            $token = $this->request->getVar('t') ?? '';
+        }
         $db = \Config\Database::connect();
 
         // Decode base64url token (replaces - with +, _ with /)
@@ -3797,8 +3801,8 @@ HTML;
             // Token: upload_id + group_name encoded — used as public URL param
             // Use base64url (no +/=) to avoid CI4 URI security block
             $raw   = $uploadId . '|' . $groupName;
-            $token = rtrim(strtr(base64_encode($raw), '+/', '-_'), '=');
-            $qrContent = $frontendBase . '/boarding-pass/' . $token;
+            $token     = rtrim(strtr(base64_encode($raw), '+/', '-_'), '=');
+            $qrContent = $frontendBase . '/boarding-pass?t=' . $token;
 
             $qrFilePath = $qrDir . uniqid('gqr_') . '.png';
 

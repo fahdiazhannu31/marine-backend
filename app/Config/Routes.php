@@ -169,6 +169,9 @@ $routes->get('/api/admin/manifest/available-seats/(:num)',           'ManifestUp
 $routes->get('/api/admin/manifest/group-by-code/(:any)',             'ManifestUploadController::getGroupByCode/$1');
 
 // Public (no auth) — group boarding pass page
+$routes->options('/api/group-boarding-pass',                         'ManifestUploadController::preflight');
+$routes->get('/api/group-boarding-pass',                             'ManifestUploadController::publicGroupBoardingPass');
+// Keep path param version as fallback
 $routes->options('/api/group-boarding-pass/(:any)',                  'ManifestUploadController::preflight');
 $routes->get('/api/group-boarding-pass/(:any)',                      'ManifestUploadController::publicGroupBoardingPass/$1');
 $routes->post('/api/admin/manifest/checkin-bulk',                    'ManifestUploadController::checkinBulk');
