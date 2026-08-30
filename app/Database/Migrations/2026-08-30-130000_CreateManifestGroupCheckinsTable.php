@@ -8,7 +8,7 @@ class CreateManifestGroupCheckinsTable extends Migration
 {
     public function up()
     {
-        $this->forge->createTable('manifest_group_checkins', false, [
+        $this->forge->createTable('manifest_group_checkins', [
             'id' => [
                 'type'           => 'INT',
                 'constraint'     => 11,
