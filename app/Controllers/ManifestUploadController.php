@@ -3264,7 +3264,6 @@ public function boardingPass(int $uploadId)
             ],
         ]);
     }
-}
 
     // ═══════════════════════════════════════════════════════════════════
     // POST /api/admin/manifest/send-group-qr-emails
