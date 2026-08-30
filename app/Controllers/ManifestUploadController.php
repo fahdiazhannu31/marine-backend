@@ -737,6 +737,14 @@ class ManifestUploadController extends ApiController
             return $this->jsonResponse(['error' => 'No passenger rows found in the manifest.'], 422);
         }
 
+        // DEBUG: Log ticket count
+        log_message('info', "=== MANIFEST UPLOAD DEBUG ===");
+        log_message('info', "Total tickets parsed: " . count($ticketRows));
+        foreach (array_slice($ticketRows, 0, 5) as $t) {
+            log_message('info', "Sample ticket: {$t['seq_no']} | {$t['passenger_name']} | {$t['ket']} | {$t['group_name']}");
+        }
+        log_message('info', "=== END DEBUG ===");
+
         // ── 7. Auto-assign seats ──────────────────────────────────────
         // Only assign seats to paying passengers (OVERNIGHT / DAY TRIP).
         // STAFF, FOC, VENDOR get seats too if available, but are last priority.
