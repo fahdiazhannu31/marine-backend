@@ -3056,23 +3056,16 @@ public function boardingPass(int $uploadId)
         }
 
         // ── PASSENGER QR ──────────────────────────────────────────────────
-        // Strip QR prefix: "NAMA_MARINE_MANIFEST_TKT-123-0001" → "TKT-123-0001"
+        // Single QR per group: no -R suffix (one QR for both departure + return)
         $cleanCode = preg_replace('/^NAMA_MARINE_MANIFEST_/i', '', $code);
-
-        // Detect return boarding pass: ticket code ends in -R (e.g. TKT-5-0001-R)
-        $isReturn  = preg_match('/-R$/i', $cleanCode);
-        // Strip the -R suffix so we find the base ticket in the database
-        $lookupCode = preg_replace('/-R$/i', '', $cleanCode);
 
         // Try: ticket_code, id, id_passport, group_name
         $ticket = $db->table('manifest_tickets')
             ->groupStart()
-                ->where('ticket_code', $lookupCode)
-                ->orWhere('ticket_code', $cleanCode)  // fallback: try with -R too
-                ->orWhere('ticket_code', $code)
-                ->orWhere('id', (int)$code)
-                ->orWhere('id_passport', $lookupCode)
-                ->orWhere('group_name', $lookupCode)
+                ->where('ticket_code', $cleanCode)
+                ->orWhere('id', (int)$cleanCode)
+                ->orWhere('id_passport', $cleanCode)
+                ->orWhere('group_name', $cleanCode)
             ->groupEnd()
             ->orderBy('id', 'DESC')
             ->get()
@@ -3082,7 +3075,7 @@ public function boardingPass(int $uploadId)
             return $this->jsonResponse(['error' => 'Ticket or group not found.'], 404);
         }
 
-        // Get upload info - trip_date already stored in manifest_uploads
+        // Get upload info
         $upload = $db->table('manifest_uploads as u')
             ->select('u.*, b.boat_name')
             ->join('boat b', 'u.boat_id = b.id', 'left')
@@ -3094,6 +3087,39 @@ public function boardingPass(int $uploadId)
             return $this->jsonResponse(['error' => 'Upload not found.'], 404);
         }
 
+        $today = date('Y-m-d');
+        $tripDate = substr($upload['trip_date'], 0, 10);
+        
+        // Determine if this is a return trip (next day for overnight)
+        $isReturnDate = false;
+        if (str_contains(strtoupper($ticket['ket'] ?? ''), 'OVERNIGHT')) {
+            // For overnight, calculate return date (next day)
+            $returnDate = date('Y-m-d', strtotime($tripDate . ' +1 day'));
+            $isReturnDate = ($today === $returnDate);
+        }
+
+        // Check if group already checked in TODAY
+        $groupCheckins = $db->table('manifest_group_checkins')
+            ->where('upload_id', $upload['id'])
+            ->where('group_name', $ticket['group_name'])
+            ->where('DATE(checked_in_at)', $today)
+            ->orderBy('checked_in_at', 'DESC')
+            ->get()
+            ->getResultArray();
+
+        $alreadyCheckedInToday = !empty($groupCheckins);
+
+        // If checked in today and NOT return date, block re-scan
+        if ($alreadyCheckedInToday && !$isReturnDate) {
+            return $this->jsonResponse([
+                'error' => 'Group sudah di-check-in hari ini. Silakan kembali besok untuk check-in pulang.',
+                'type' => 'already_checked_in',
+                'group_name' => $ticket['group_name'],
+                'checked_in_at' => $groupCheckins[0]['checked_in_at'] ?? null,
+                'can_retry_tomorrow' => true,
+            ], 409); // 409 Conflict
+        }
+
         // Get all tickets in the same group
         $tickets = $db->table('manifest_tickets')
             ->where('upload_id', $ticket['upload_id'])
@@ -3102,15 +3128,25 @@ public function boardingPass(int $uploadId)
             ->get()
             ->getResultArray();
 
+        // Auto check-in the group: record this scan in manifest_group_checkins
+        $now = date('Y-m-d H:i:s');
+        $db->table('manifest_group_checkins')->insert([
+            'upload_id'    => $upload['id'],
+            'group_name'   => $ticket['group_name'],
+            'checked_in_at' => $now,
+            'direction'    => $isReturnDate ? 'RETURN' : 'DEPARTURE',
+            'notes'        => 'Auto group check-in via QR scan',
+        ]);
+
         return $this->jsonResponse([
             'type'              => 'passenger',
             'scanned_ticket_id' => (int)$ticket['id'],
-            'is_return'         => (bool)$isReturn,   // true when scanned from return boarding pass
+            'is_return'         => (bool)$isReturnDate,
             'group_name'        => $ticket['group_name'],
             'upload_id'         => $ticket['upload_id'],
             'boat_name'         => $upload['boat_name'],
             'trip_date'         => $upload['trip_date'],
-            'direction'         => $isReturn ? 'RETURN' : $upload['direction'],
+            'direction'         => $isReturnDate ? 'RETURN' : 'DEPARTURE',
             'tickets'           => $tickets,
         ]);
     }
