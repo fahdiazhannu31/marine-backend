@@ -1465,7 +1465,7 @@ class ManifestUploadController extends ApiController
 
     
 
-public function boardingPass(int $uploadId)
+public function boardingPass(int $uploadId, array $forceTicketIds = [])
 {
     $db = \Config\Database::connect();
 
@@ -1499,14 +1499,15 @@ public function boardingPass(int $uploadId)
     $qb = $db->table('manifest_tickets')
         ->where('upload_id', $uploadId);
 
-    if ($ticketIdsRaw) {
-        $ids = array_filter(
-            array_map('intval', explode(',', $ticketIdsRaw))
-        );
+    // forceTicketIds overrides query param (used by public self-service endpoint)
+    $resolvedIds = !empty($forceTicketIds)
+        ? $forceTicketIds
+        : ($ticketIdsRaw
+            ? array_filter(array_map('intval', explode(',', $ticketIdsRaw)))
+            : []);
 
-        if (!empty($ids)) {
-            $qb->whereIn('id', $ids);
-        }
+    if (!empty($resolvedIds)) {
+        $qb->whereIn('id', $resolvedIds);
     }
 
     $tickets = $qb
@@ -3782,22 +3783,10 @@ HTML;
             ->where('id', $uploadId)
             ->get()->getFirstRow('array');
 
-        // ── 4. Delegate ke boardingPass() — inject ticket_ids via $_GET ──
-        // boardingPass() reads ticket_ids via $this->request->getVar('ticket_ids')
-        // which falls back to $_GET in CI4
-        $_GET['ticket_ids']     = (string) $ticketId;
-        $_REQUEST['ticket_ids'] = (string) $ticketId;
-
-        // Also set via CI4 request object to ensure getVar() picks it up
-        parse_str('ticket_ids=' . $ticketId, $newGet);
-        $this->request->setGlobal('get', array_merge(
-            $_GET,
-            $newGet
-        ));
-
-        return $this->boardingPass($uploadId);
+        // ── 4. Delegate ke boardingPass() dengan force ticket_ids ──────────
+        // Pass ticket ID directly via parameter — bypasses CI4 request caching
+        return $this->boardingPass($uploadId, [$ticketId]);
     }
-
     public function boardingPassSelfService()
     {
         if (!$this->isAdminUser()) {
