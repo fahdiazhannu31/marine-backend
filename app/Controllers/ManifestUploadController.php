@@ -3629,8 +3629,9 @@ HTML;
     {
         $db = \Config\Database::connect();
 
-        // Decode token
-        $decoded = base64_decode(urldecode($token), true);
+        // Decode base64url token (replaces - with +, _ with /)
+        $b64     = strtr(urldecode($token), '-_', '+/');
+        $decoded = base64_decode($b64, true);
         if (!$decoded || !str_contains($decoded, '|')) {
             return $this->jsonResponse(['error' => 'Invalid token.'], 400);
         }
@@ -3794,8 +3795,10 @@ HTML;
         // Generate QR per group
         foreach ($groups as $groupName => $members) {
             // Token: upload_id + group_name encoded — used as public URL param
-            $token     = base64_encode($uploadId . '|' . $groupName);
-            $qrContent = $frontendBase . '/boarding-pass/' . urlencode($token);
+            // Use base64url (no +/=) to avoid CI4 URI security block
+            $raw   = $uploadId . '|' . $groupName;
+            $token = rtrim(strtr(base64_encode($raw), '+/', '-_'), '=');
+            $qrContent = $frontendBase . '/boarding-pass/' . $token;
 
             $qrFilePath = $qrDir . uniqid('gqr_') . '.png';
 
