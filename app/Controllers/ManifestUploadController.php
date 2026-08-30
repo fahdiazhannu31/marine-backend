@@ -857,7 +857,13 @@ class ManifestUploadController extends ApiController
 
         // ── 10. Generate group QR codes ──────────────────────────────
         // Create unique QR per group for self-service boarding pass generation
-        $groupQrCodes = $this->generateGroupQrCodes($uploadId, $ticketRows);
+        $groupQrCodes = [];
+        try {
+            $groupQrCodes = $this->generateGroupQrCodes($uploadId, $ticketRows);
+        } catch (\Exception $e) {
+            log_message('error', "Failed to generate group QR codes: " . $e->getMessage());
+            // Continue even if QR generation fails — upload is still valid
+        }
 
         // Update manifest_uploads with generated QR codes
         $uploadModel->update($uploadId, [
@@ -3526,7 +3532,65 @@ public function boardingPass(int $uploadId)
         ]);
     }
 
-    // ─── Helper: build email body for group QR ───────────────────────────────
+    // ─── Helper: Generate group QR codes ───────────────────────────────
+    private function generateGroupQrCodes(int $uploadId, array $ticketRows): array
+    {
+        $groupQrs = [];
+        $qrDir    = WRITEPATH . 'uploads/qr_codes/';
+
+        if (!is_dir($qrDir)) {
+            @mkdir($qrDir, 0775, true);
+        }
+
+        // Group tickets by group_name
+        $groups = [];
+        foreach ($ticketRows as $ticket) {
+            $groupName = $ticket['group_name'] ?? '__solo__' . $ticket['seq_no'];
+            if (!isset($groups[$groupName])) {
+                $groups[$groupName] = [];
+            }
+            $groups[$groupName][] = $ticket;
+        }
+
+        // Generate QR per group
+        foreach ($groups as $groupName => $members) {
+            // QR content: unique identifier for self-service BP generation
+            $qrContent = 'NAMA_GROUP_QR_' . $uploadId . '_' . base64_encode(strtoupper($groupName));
+
+            $qrFilePath = $qrDir . uniqid('gqr_') . '.png';
+
+            try {
+                $writer = new \Endroid\QrCode\Writer\PngWriter();
+                $qrCode = \Endroid\QrCode\QrCode::create($qrContent)
+                    ->setEncoding(new \Endroid\QrCode\Encoding\Encoding('UTF-8'))
+                    ->setSize(300)
+                    ->setMargin(8)
+                    ->setForegroundColor(new \Endroid\QrCode\Color\Color(0, 0, 0))
+                    ->setBackgroundColor(new \Endroid\QrCode\Color\Color(255, 255, 255));
+
+                $writer->write($qrCode)->saveToFile($qrFilePath);
+
+                // Store as data URL (for frontend display)
+                $qrData = base64_encode(file_get_contents($qrFilePath));
+                $dataUrl = 'data:image/png;base64,' . $qrData;
+
+                $groupQrs[$groupName] = [
+                    'group_name' => $groupName,
+                    'qr_content' => $qrContent,
+                    'qr_data_url' => $dataUrl,
+                    'member_count' => count($members),
+                ];
+
+                @unlink($qrFilePath);
+
+            } catch (\Exception $e) {
+                log_message('error', 'Failed to generate group QR for ' . $groupName . ': ' . $e->getMessage());
+                // Continue on error — just skip this group's QR
+            }
+        }
+
+        return $groupQrs;
+    }
     private function buildGroupQrEmailBody(array $groupInfo, array $qrData, array $upload): string
     {
         $groupName = $groupInfo['group_name'] ?? 'Group';
