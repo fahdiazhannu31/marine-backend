@@ -3782,12 +3782,19 @@ HTML;
             ->where('id', $uploadId)
             ->get()->getFirstRow('array');
 
-        // ── 4. Delegate ke boardingPass() — reuse existing PDF logic ─────
-        // Override request var ticket_ids so boardingPass() renders only this ticket
-        $_GET['ticket_ids'] = (string) $ticketId;
+        // ── 4. Delegate ke boardingPass() — inject ticket_ids via $_GET ──
+        // boardingPass() reads ticket_ids via $this->request->getVar('ticket_ids')
+        // which falls back to $_GET in CI4
+        $_GET['ticket_ids']     = (string) $ticketId;
         $_REQUEST['ticket_ids'] = (string) $ticketId;
 
-        // Call the existing boardingPass method which handles full PDF generation
+        // Also set via CI4 request object to ensure getVar() picks it up
+        parse_str('ticket_ids=' . $ticketId, $newGet);
+        $this->request->setGlobal('get', array_merge(
+            $_GET,
+            $newGet
+        ));
+
         return $this->boardingPass($uploadId);
     }
 
