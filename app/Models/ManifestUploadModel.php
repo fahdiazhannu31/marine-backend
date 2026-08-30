@@ -19,6 +19,7 @@ class ManifestUploadModel extends Model
         'total_pax', 'overnight_count', 'daytrip_count',
         'staff_count', 'foc_count', 'vendor_count',
         'status', 'notes',
+        'group_qr_codes', 'qr_generation_status', 'qr_emails_sent_at',
     ];
     protected $useTimestamps  = true;
     protected $createdField   = 'created_at';
