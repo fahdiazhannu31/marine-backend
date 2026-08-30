@@ -3620,6 +3620,81 @@ HTML;
     }
 
     // ═══════════════════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════════
+    // GET /api/group-boarding-pass/{token}  — NO AUTH REQUIRED (public)
+    // Token = base64(uploadId|groupName)
+    // Returns group info + all tickets for self-service boarding pass page
+    // ═══════════════════════════════════════════════════════════════════
+    public function publicGroupBoardingPass(string $token)
+    {
+        $db = \Config\Database::connect();
+
+        // Decode token
+        $decoded = base64_decode(urldecode($token), true);
+        if (!$decoded || !str_contains($decoded, '|')) {
+            return $this->jsonResponse(['error' => 'Invalid token.'], 400);
+        }
+
+        [$uploadId, $groupName] = explode('|', $decoded, 2);
+        $uploadId = (int) $uploadId;
+
+        if (!$uploadId || !$groupName) {
+            return $this->jsonResponse(['error' => 'Invalid token.'], 400);
+        }
+
+        // Get upload info
+        $upload = $db->table('manifest_uploads u')
+            ->select('u.*, b.boat_name as boat_label')
+            ->join('boat b', 'b.id = u.boat_id', 'left')
+            ->where('u.id', $uploadId)
+            ->get()
+            ->getFirstRow('array');
+
+        if (!$upload) {
+            return $this->jsonResponse(['error' => 'Manifest not found.'], 404);
+        }
+
+        // Get all tickets in this group
+        $tickets = $db->table('manifest_tickets')
+            ->where('upload_id', $uploadId)
+            ->where('group_name', $groupName)
+            ->where('cancelled', 0)
+            ->orderBy('seq_no', 'ASC')
+            ->get()
+            ->getResultArray();
+
+        if (empty($tickets)) {
+            return $this->jsonResponse(['error' => 'Group not found or no active tickets.'], 404);
+        }
+
+        // Build boarding pass URL per ticket
+        $backendBase = rtrim(env('app.baseURL', ''), '/');
+        $ticketList  = array_map(function ($t) use ($backendBase, $uploadId) {
+            return [
+                'id'                => (int) $t['id'],
+                'seq_no'            => $t['seq_no'],
+                'passenger_name'    => $t['passenger_name'],
+                'seat_number'       => $t['seat_number'],
+                'ket'               => $t['ket'],
+                'ticket_code'       => $t['ticket_code'],
+                'boarding_pass_url' => $backendBase . '/api/admin/manifest/boarding-pass/' . $uploadId . '?ticket_ids=' . $t['id'],
+            ];
+        }, $tickets);
+
+        return $this->jsonResponse([
+            'upload_id'    => $uploadId,
+            'group_name'   => $groupName,
+            'boat_name'    => $upload['boat_label'] ?? $upload['boat_name'],
+            'trip_date'    => $upload['trip_date'],
+            'origin'       => $upload['origin'],
+            'destination'  => $upload['destination'],
+            'captain_name' => $upload['captain_name'],
+            'tickets'      => $ticketList,
+            'total'        => count($ticketList),
+        ]);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
     // POST /api/admin/manifest/boarding-pass-self-service
     // Self-service boarding pass generation: scan group QR → return BP PDF
     // 
@@ -3713,10 +3788,14 @@ HTML;
             $groups[$groupName][] = $ticket;
         }
 
+        // Base URL for public boarding pass page
+        $frontendBase = rtrim(env('frontend.baseURL', 'http://localhost:5173'), '/');
+
         // Generate QR per group
         foreach ($groups as $groupName => $members) {
-            // QR content: unique identifier for self-service BP generation
-            $qrContent = 'NAMA_GROUP_QR_' . $uploadId . '_' . base64_encode(strtoupper($groupName));
+            // Token: upload_id + group_name encoded — used as public URL param
+            $token     = base64_encode($uploadId . '|' . $groupName);
+            $qrContent = $frontendBase . '/boarding-pass/' . urlencode($token);
 
             $qrFilePath = $qrDir . uniqid('gqr_') . '.png';
 
@@ -3736,8 +3815,9 @@ HTML;
                 $dataUrl = 'data:image/png;base64,' . $qrData;
 
                 $groupQrs[$groupName] = [
-                    'group_name' => $groupName,
-                    'qr_content' => $qrContent,
+                    'group_name'  => $groupName,
+                    'token'       => $token,
+                    'qr_content'  => $qrContent,
                     'qr_data_url' => $dataUrl,
                     'member_count' => count($members),
                 ];

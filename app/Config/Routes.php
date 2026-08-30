@@ -167,6 +167,10 @@ $routes->put('/api/admin/manifest/tickets/(:num)',                   'ManifestUp
 $routes->post('/api/admin/manifest/tickets/(:num)/toggle-cancel',    'ManifestUploadController::toggleCancel/$1');
 $routes->get('/api/admin/manifest/available-seats/(:num)',           'ManifestUploadController::getAvailableSeats/$1');
 $routes->get('/api/admin/manifest/group-by-code/(:any)',             'ManifestUploadController::getGroupByCode/$1');
+
+// Public (no auth) — group boarding pass page
+$routes->options('/api/group-boarding-pass/(:any)',                  'ManifestUploadController::preflight');
+$routes->get('/api/group-boarding-pass/(:any)',                      'ManifestUploadController::publicGroupBoardingPass/$1');
 $routes->post('/api/admin/manifest/checkin-bulk',                    'ManifestUploadController::checkinBulk');
 $routes->get('/api/admin/manifest/final/(:num)',                     'ManifestUploadController::getManifestFinal/$1');
 $routes->get('/api/admin/manifest/export-excel/(:num)',              'ManifestUploadController::exportExcel/$1');
