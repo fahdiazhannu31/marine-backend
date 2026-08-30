@@ -844,6 +844,16 @@ class ManifestUploadController extends ApiController
                ->update(['status' => 'booked']);
         }
 
+        // ── 10. Generate group QR codes ──────────────────────────────
+        // Create unique QR per group for self-service boarding pass generation
+        $groupQrCodes = $this->generateGroupQrCodes($uploadId, $ticketRows);
+
+        // Update manifest_uploads with generated QR codes
+        $uploadModel->update($uploadId, [
+            'group_qr_codes'       => json_encode($groupQrCodes),
+            'qr_generation_status' => !empty($groupQrCodes) ? 'generated' : 'failed',
+        ]);
+
         return $this->jsonResponse([
             'message'         => 'Manifest uploaded and seats assigned successfully.',
             'upload_id'       => $uploadId,
@@ -859,6 +869,7 @@ class ManifestUploadController extends ApiController
             'captain_name'    => $captainName ?: null,
             'crew_names'      => $abkNamesRaw ?: null,
             'gro_name'        => $headerMeta['gro_name'],
+            'group_qr_codes'  => $groupQrCodes,
         ], 201);
     }
 
@@ -3252,5 +3263,358 @@ public function boardingPass(int $uploadId)
                 'new_seat'    => $ticketA['seat_number'],
             ],
         ]);
+    }
+}
+
+    // ═══════════════════════════════════════════════════════════════════
+    // POST /api/admin/manifest/send-group-qr-emails
+    // Blast email: send group QR codes to all groups in a manifest upload
+    // 
+    // Body JSON: { upload_id: int, (optional) email_template: 'default'|'custom' }
+    // ═══════════════════════════════════════════════════════════════════
+    public function sendGroupQrEmails()
+    {
+        if (!$this->isAdminUser()) {
+            return $this->jsonResponse(['error' => 'Forbidden.'], 403);
+        }
+
+        $db = \Config\Database::connect();
+        $body = $this->request->getJSON(true) ?? [];
+        $uploadId = (int) ($body['upload_id'] ?? 0);
+
+        if (!$uploadId) {
+            return $this->jsonResponse(['error' => 'upload_id is required.'], 422);
+        }
+
+        // Get upload with group QR codes
+        $upload = $db->table('manifest_uploads')
+            ->where('id', $uploadId)
+            ->get()
+            ->getFirstRow('array');
+
+        if (!$upload) {
+            return $this->jsonResponse(['error' => 'Upload not found.'], 404);
+        }
+
+        if ($upload['qr_generation_status'] !== 'generated') {
+            return $this->jsonResponse([
+                'error' => 'Group QR codes not generated for this upload.',
+                'status' => $upload['qr_generation_status']
+            ], 422);
+        }
+
+        // Parse group QR codes JSON
+        $groupQrs = [];
+        try {
+            $groupQrs = json_decode($upload['group_qr_codes'], true) ?? [];
+        } catch (\Exception $e) {
+            return $this->jsonResponse(['error' => 'Failed to parse group QR codes.'], 500);
+        }
+
+        if (empty($groupQrs)) {
+            return $this->jsonResponse(['error' => 'No group QR codes found.'], 404);
+        }
+
+        // Get unique group emails (from first passenger in each group)
+        $groups = [];
+        $tickets = $db->table('manifest_tickets')
+            ->where('upload_id', $uploadId)
+            ->where('cancelled', 0)
+            ->orderBy('group_name', 'ASC')
+            ->orderBy('seq_no', 'ASC')
+            ->get()
+            ->getResultArray();
+
+        // Group tickets by group_name and collect contact info
+        $groupContactMap = [];
+        foreach ($tickets as $t) {
+            $grp = $t['group_name'] ?? '__solo__';
+            if (!isset($groupContactMap[$grp])) {
+                $groupContactMap[$grp] = [
+                    'group_name' => $grp,
+                    'lead_name'  => $t['passenger_name'],
+                    'members'    => [],
+                ];
+            }
+            $groupContactMap[$grp]['members'][] = $t['passenger_name'];
+        }
+
+        // Send emails
+        $sentCount = 0;
+        $failedGroups = [];
+        $emailService = \Config\Services::email();
+
+        foreach ($groupContactMap as $groupName => $groupInfo) {
+            // Get QR for this group
+            $groupQrData = $groupQrs[$groupName] ?? null;
+            if (!$groupQrData) {
+                $failedGroups[] = $groupName;
+                continue;
+            }
+
+            // TODO: Get email address for this group (from booking or form)
+            // For MVP, skip if no email available
+            $groupEmail = $body['group_emails'][$groupName] ?? null;
+            if (!$groupEmail) {
+                // Try to infer from form submission or customer booking
+                // For now, log and skip
+                log_message('warning', "No email found for group: {$groupName}");
+                $failedGroups[] = $groupName;
+                continue;
+            }
+
+            // Compose email
+            $emailSubject = "🎫 Boarding Pass QR Code - {$groupName}";
+            $emailBody = $this->buildGroupQrEmailBody($groupInfo, $groupQrData, $upload);
+
+            $emailService->setTo($groupEmail);
+            $emailService->setSubject($emailSubject);
+            $emailService->setMessage($emailBody);
+            $emailService->setMailType('html');
+
+            // Try to send
+            if ($emailService->send(false)) {
+                $sentCount++;
+            } else {
+                log_message('error', "Failed to send email to {$groupEmail} (group: {$groupName})");
+                $failedGroups[] = $groupName;
+            }
+
+            $emailService->clear();
+        }
+
+        // Update send status
+        $db->table('manifest_uploads')
+            ->where('id', $uploadId)
+            ->update(['qr_emails_sent_at' => date('Y-m-d H:i:s')]);
+
+        return $this->jsonResponse([
+            'message' => "Sent {$sentCount} emails",
+            'sent_count' => $sentCount,
+            'total_groups' => count($groupContactMap),
+            'failed_groups' => $failedGroups,
+        ]);
+    }
+
+    // ─── Helper: build email body for group QR ───────────────────────────────
+    private function buildGroupQrEmailBody(array $groupInfo, array $qrData, array $upload): string
+    {
+        $groupName = $groupInfo['group_name'] ?? 'Group';
+        $leadName = $groupInfo['lead_name'] ?? 'Valued Guest';
+        $membersList = implode(', ', $groupInfo['members'] ?? []);
+        $boatName = $upload['boat_name'] ?? 'NAMA Boat';
+        $origin = $upload['origin'] ?? 'Baywalk';
+        $dest = $upload['destination'] ?? 'Sepa';
+        $tripDate = $upload['trip_date'] ? date('d F Y', strtotime($upload['trip_date'])) : 'TBA';
+        $qrImage = $qrData['qr_data_url'] ?? null;
+
+        $html = <<<HTML
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial, sans-serif; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background-color: #F2881C; color: white; padding: 20px; text-align: center; border-radius: 4px; }
+        .header h1 { margin: 0; }
+        .body { background-color: #f9f9f9; padding: 20px; margin-top: 20px; }
+        .qr-section { text-align: center; margin: 20px 0; }
+        .qr-section img { max-width: 300px; }
+        .trip-info { background: white; padding: 15px; margin: 15px 0; border-left: 4px solid #F2881C; }
+        .trip-info p { margin: 5px 0; }
+        .footer { text-align: center; color: #999; font-size: 12px; margin-top: 20px; }
+        .btn { display: inline-block; background-color: #F2881C; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎫 Your Boarding Pass QR Code</h1>
+            <p>Ready for Check-in</p>
+        </div>
+
+        <div class="body">
+            <p>Dear <strong>{$leadName}</strong>,</p>
+
+            <p>Your boarding pass QR code is ready! Please scan the QR code below at our admin counter to check in and generate your boarding pass.</p>
+
+            <div class="trip-info">
+                <p><strong>Group:</strong> {$groupName}</p>
+                <p><strong>Passengers:</strong> {$membersList}</p>
+                <p><strong>Boat:</strong> {$boatName}</p>
+                <p><strong>Route:</strong> {$origin} → {$dest}</p>
+                <p><strong>Date:</strong> {$tripDate}</p>
+            </div>
+
+            <div class="qr-section">
+                <p><strong>Scan this QR code to generate boarding pass:</strong></p>
+HTML;
+
+        if ($qrImage) {
+            $html .= "                <img src=\"{$qrImage}\" alt=\"Group QR Code\" />\n";
+        }
+
+        $html .= <<<HTML
+            </div>
+
+            <p><strong>How to use:</strong></p>
+            <ol>
+                <li>Proceed to our admin counter on the day of travel</li>
+                <li>Have this email ready with the QR code visible</li>
+                <li>Scan the QR code with our scanner</li>
+                <li>Receive your boarding pass (physical or digital)</li>
+            </ol>
+
+            <p><strong>Questions?</strong> Contact us at our counter or call for assistance.</p>
+
+            <p>We look forward to welcoming you aboard!</p>
+            <p>Best regards,<br><strong>NAMA Marine Team</strong></p>
+        </div>
+
+        <div class="footer">
+            <p>This is an automated message. Please do not reply to this email.</p>
+            <p>Safe travels! 🚤</p>
+        </div>
+    </div>
+</body>
+</html>
+HTML;
+
+        return $html;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // POST /api/admin/manifest/boarding-pass-self-service
+    // Self-service boarding pass generation: scan group QR → return BP PDF
+    // 
+    // Body JSON: { group_qr_code: "NAMA_GROUP_QR_..." }
+    // or Query: ?code=NAMA_GROUP_QR_...
+    // ═══════════════════════════════════════════════════════════════════
+    public function boardingPassSelfService()
+    {
+        if (!$this->isAdminUser()) {
+            return $this->jsonResponse(['error' => 'Forbidden.'], 403);
+        }
+
+        $db = \Config\Database::connect();
+
+        // Get group QR code from body or query
+        $body = $this->request->getJSON(true) ?? [];
+        $groupQrCode = $body['group_qr_code'] ?? $this->request->getVar('code') ?? null;
+
+        if (!$groupQrCode) {
+            return $this->jsonResponse(['error' => 'group_qr_code is required.'], 422);
+        }
+
+        // Parse QR code: NAMA_GROUP_QR_{uploadId}_{base64_group_name}
+        if (!preg_match('/^NAMA_GROUP_QR_(\d+)_(.+)$/i', $groupQrCode, $matches)) {
+            return $this->jsonResponse(['error' => 'Invalid group QR code format.'], 422);
+        }
+
+        $uploadId = (int) $matches[1];
+        $groupNameBase64 = $matches[2];
+
+        try {
+            $groupName = base64_decode($groupNameBase64, true);
+            if ($groupName === false) {
+                throw new \Exception('Base64 decode failed');
+            }
+        } catch (\Exception $e) {
+            return $this->jsonResponse(['error' => 'Failed to decode group name from QR code.'], 422);
+        }
+
+        // Verify upload exists
+        $upload = $db->table('manifest_uploads')
+            ->where('id', $uploadId)
+            ->get()
+            ->getFirstRow('array');
+
+        if (!$upload) {
+            return $this->jsonResponse(['error' => 'Upload not found.'], 404);
+        }
+
+        // Get all tickets for this group in this upload
+        $tickets = $db->table('manifest_tickets')
+            ->where('upload_id', $uploadId)
+            ->where('group_name', $groupName)
+            ->where('cancelled', 0)
+            ->orderBy('seq_no', 'ASC')
+            ->get()
+            ->getResultArray();
+
+        if (empty($tickets)) {
+            return $this->jsonResponse(['error' => 'No tickets found for this group.'], 404);
+        }
+
+        // Collect ticket IDs
+        $ticketIds = array_column($tickets, 'id');
+
+        // Generate boarding pass PDF for this group
+        // Reuse the boardingPass endpoint by passing ticket_ids
+        $this->request->setGlobal('GET', ['ticket_ids' => implode(',', $ticketIds)]);
+        return $this->boardingPass($uploadId);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // HELPER: Generate unique QR codes per group
+    // ═══════════════════════════════════════════════════════════════════
+    private function generateGroupQrCodes(int $uploadId, array $ticketRows): array
+    {
+        $groupQrs = [];
+        $qrDir    = WRITEPATH . 'uploads/qr_codes/';
+
+        if (!is_dir($qrDir)) {
+            mkdir($qrDir, 0775, true);
+        }
+
+        // Group tickets by group_name
+        $groups = [];
+        foreach ($ticketRows as $ticket) {
+            $groupName = $ticket['group_name'] ?? '__solo__' . $ticket['seq_no'];
+            if (!isset($groups[$groupName])) {
+                $groups[$groupName] = [];
+            }
+            $groups[$groupName][] = $ticket;
+        }
+
+        // Generate QR per group
+        foreach ($groups as $groupName => $members) {
+            // QR content: unique identifier for self-service BP generation
+            $qrContent = 'NAMA_GROUP_QR_' . $uploadId . '_' . base64_encode(strtoupper($groupName));
+
+            $qrFilePath = $qrDir . uniqid('gqr_') . '.png';
+
+            try {
+                $writer = new \Endroid\QrCode\Writer\PngWriter();
+                $qrCode = \Endroid\QrCode\QrCode::create($qrContent)
+                    ->setEncoding(new \Endroid\QrCode\Encoding\Encoding('UTF-8'))
+                    ->setSize(300)
+                    ->setMargin(8)
+                    ->setForegroundColor(new \Endroid\QrCode\Color\Color(0, 0, 0))
+                    ->setBackgroundColor(new \Endroid\QrCode\Color\Color(255, 255, 255));
+
+                $writer->write($qrCode)->saveToFile($qrFilePath);
+
+                // Store as data URL (for frontend display)
+                $qrData = base64_encode(file_get_contents($qrFilePath));
+                $dataUrl = 'data:image/png;base64,' . $qrData;
+
+                $groupQrs[$groupName] = [
+                    'group_name' => $groupName,
+                    'qr_content' => $qrContent,
+                    'qr_data_url' => $dataUrl,
+                    'member_count' => count($members),
+                ];
+
+                @unlink($qrFilePath);
+
+            } catch (\Exception $e) {
+                log_message('error', 'Failed to generate group QR for ' . $groupName . ': ' . $e->getMessage());
+                // Continue on error — just skip this group's QR
+            }
+        }
+
+        return $groupQrs;
     }
 }

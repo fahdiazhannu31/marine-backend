@@ -158,6 +158,8 @@ $routes->delete('/api/admin/manifest/baggage/(:num)',                'ManifestUp
 $routes->post('/api/admin/manifest/baggage/(:num)/mark-printed',     'ManifestUploadController::markBaggagePrinted/$1');
 $routes->get('/api/admin/manifest/baggage-tag-pdf/(:num)',           'ManifestUploadController::baggageTagPdf/$1');
 $routes->get('/api/admin/manifest/boarding-pass/(:num)',             'ManifestUploadController::boardingPass/$1');
+$routes->post('/api/admin/manifest/boarding-pass-self-service',      'ManifestUploadController::boardingPassSelfService');
+$routes->post('/api/admin/manifest/send-group-qr-emails',            'ManifestUploadController::sendGroupQrEmails');
 $routes->get('/api/admin/manifest/boats',                            'ManifestUploadController::listBoats');
 $routes->put('/api/admin/manifest/boats/(:num)/crew',                'ManifestUploadController::updateBoatCrew/$1');
 $routes->put('/api/admin/manifest/tickets/(:num)',                   'ManifestUploadController::updateTicket/$1');
