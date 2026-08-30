@@ -454,6 +454,7 @@ class ManifestUploadController extends ApiController
             'KET'       => 'ket',
             'NAMA'      => 'passenger_name',
             'GRUP'      => 'group_name',
+            'EMAIL'     => 'email',
             'AGENT'     => 'agent',
             'PACKAGE'   => 'package',
             'PAX'       => 'pax_count',
@@ -489,6 +490,7 @@ class ManifestUploadController extends ApiController
             'ket'            => null,
             'passenger_name' => '',
             'group_name'     => null,
+            'email'          => null,
             'agent'          => null,
             'package'        => null,
             'pax_count'      => 1,
@@ -818,6 +820,7 @@ class ManifestUploadController extends ApiController
                 'ket'            => $t['ket'] ?? null,
                 'passenger_name' => $t['passenger_name'],
                 'group_name'     => $t['group_name'] ?? null,
+                'email'          => $t['email'] ?? null,
                 'agent'          => $t['agent'] ?? null,
                 'package'        => $t['package'] ?? null,
                 'pax_count'      => $t['pax_count'] ?? 1,
@@ -3384,8 +3387,7 @@ public function boardingPass(int $uploadId)
             return $this->jsonResponse(['error' => 'No group QR codes found.'], 404);
         }
 
-        // Get unique group emails (from first passenger in each group)
-        $groups = [];
+        // Get group info with emails from tickets
         $tickets = $db->table('manifest_tickets')
             ->where('upload_id', $uploadId)
             ->where('cancelled', 0)
@@ -3394,7 +3396,7 @@ public function boardingPass(int $uploadId)
             ->get()
             ->getResultArray();
 
-        // Group tickets by group_name and collect contact info
+        // Group tickets by group_name and collect first email + member info
         $groupContactMap = [];
         foreach ($tickets as $t) {
             $grp = $t['group_name'] ?? '__solo__';
@@ -3402,8 +3404,13 @@ public function boardingPass(int $uploadId)
                 $groupContactMap[$grp] = [
                     'group_name' => $grp,
                     'lead_name'  => $t['passenger_name'],
+                    'email'      => $t['email'],  // Store email from ticket
                     'members'    => [],
                 ];
+            }
+            // Use first email found in group if not already set
+            if (!$groupContactMap[$grp]['email'] && $t['email']) {
+                $groupContactMap[$grp]['email'] = $t['email'];
             }
             $groupContactMap[$grp]['members'][] = $t['passenger_name'];
         }
@@ -3421,13 +3428,17 @@ public function boardingPass(int $uploadId)
                 continue;
             }
 
-            // TODO: Get email address for this group (from booking or form)
-            // For MVP, skip if no email available
-            $groupEmail = $body['group_emails'][$groupName] ?? null;
+            // Get email from group info (now from manifest)
+            $groupEmail = $groupInfo['email'] ?? null;
             if (!$groupEmail) {
-                // Try to infer from form submission or customer booking
-                // For now, log and skip
                 log_message('warning', "No email found for group: {$groupName}");
+                $failedGroups[] = $groupName;
+                continue;
+            }
+
+            // Validate email format
+            if (!filter_var($groupEmail, FILTER_VALIDATE_EMAIL)) {
+                log_message('warning', "Invalid email for group {$groupName}: {$groupEmail}");
                 $failedGroups[] = $groupName;
                 continue;
             }
@@ -3442,10 +3453,16 @@ public function boardingPass(int $uploadId)
             $emailService->setMailType('html');
 
             // Try to send
-            if ($emailService->send(false)) {
-                $sentCount++;
-            } else {
-                log_message('error', "Failed to send email to {$groupEmail} (group: {$groupName})");
+            try {
+                if ($emailService->send(false)) {
+                    $sentCount++;
+                    log_message('info', "Successfully sent QR email to {$groupEmail} (group: {$groupName})");
+                } else {
+                    log_message('error', "Failed to send email to {$groupEmail} (group: {$groupName})");
+                    $failedGroups[] = $groupName;
+                }
+            } catch (\Exception $e) {
+                log_message('error', "Exception sending email to {$groupEmail}: " . $e->getMessage());
                 $failedGroups[] = $groupName;
             }
 
