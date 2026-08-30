@@ -171,6 +171,7 @@ $routes->get('/api/admin/manifest/group-by-code/(:any)',             'ManifestUp
 // Public (no auth) — group boarding pass page
 $routes->options('/api/group-boarding-pass',                         'ManifestUploadController::preflight');
 $routes->get('/api/group-boarding-pass',                             'ManifestUploadController::publicGroupBoardingPass');
+$routes->get('/api/group-boarding-pass/pdf',                         'ManifestUploadController::publicGroupBoardingPassPdf');
 // Keep path param version as fallback
 $routes->options('/api/group-boarding-pass/(:any)',                  'ManifestUploadController::preflight');
 $routes->get('/api/group-boarding-pass/(:any)',                      'ManifestUploadController::publicGroupBoardingPass/$1');

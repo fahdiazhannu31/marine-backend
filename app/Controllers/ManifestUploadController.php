@@ -3070,20 +3070,50 @@ public function boardingPass(int $uploadId)
         }
 
         // ── PASSENGER QR ──────────────────────────────────────────────────
-        // Single QR per group: no -R suffix (one QR for both departure + return)
-        $cleanCode = preg_replace('/^NAMA_MARINE_MANIFEST_/i', '', $code);
+        // Handle two QR formats:
+        // 1. New format: URL https://domain/boarding-pass?t=<base64url token>
+        // 2. Old format: NAMA_MARINE_MANIFEST_* or ticket_code directly
 
-        // Try: ticket_code, id, id_passport, group_name
-        $ticket = $db->table('manifest_tickets')
-            ->groupStart()
-                ->where('ticket_code', $cleanCode)
-                ->orWhere('id', (int)$cleanCode)
-                ->orWhere('id_passport', $cleanCode)
-                ->orWhere('group_name', $cleanCode)
-            ->groupEnd()
-            ->orderBy('id', 'DESC')
-            ->get()
-            ->getFirstRow('array');
+        // Detect new URL-based QR format
+        if (str_contains($code, '/boarding-pass') && str_contains($code, 't=')) {
+            // Extract token from URL query string
+            $parsedUrl = parse_url($code);
+            parse_str($parsedUrl['query'] ?? '', $queryParams);
+            $token = $queryParams['t'] ?? null;
+
+            if ($token) {
+                // Decode base64url token → uploadId|groupName
+                $b64     = strtr($token, '-_', '+/');
+                $decoded = base64_decode($b64, true);
+                if ($decoded && str_contains($decoded, '|')) {
+                    [$uploadId, $groupName] = explode('|', $decoded, 2);
+                    // Redirect to group check-in logic
+                    $ticket = $db->table('manifest_tickets')
+                        ->where('upload_id', (int)$uploadId)
+                        ->where('group_name', $groupName)
+                        ->where('cancelled', 0)
+                        ->orderBy('id', 'ASC')
+                        ->get()->getFirstRow('array');
+                }
+            }
+        }
+
+        if (!isset($ticket) || !$ticket) {
+            // Old format: strip NAMA_MARINE_MANIFEST_ prefix
+            $cleanCode = preg_replace('/^NAMA_MARINE_MANIFEST_/i', '', $code);
+
+            // Try: ticket_code, id, id_passport, group_name
+            $ticket = $db->table('manifest_tickets')
+                ->groupStart()
+                    ->where('ticket_code', $cleanCode)
+                    ->orWhere('id', (int)$cleanCode)
+                    ->orWhere('id_passport', $cleanCode)
+                    ->orWhere('group_name', $cleanCode)
+                ->groupEnd()
+                ->orderBy('id', 'DESC')
+                ->get()
+                ->getFirstRow('array');
+        }
 
         if (!$ticket) {
             return $this->jsonResponse(['error' => 'Ticket or group not found.'], 404);
@@ -3672,9 +3702,10 @@ HTML;
             return $this->jsonResponse(['error' => 'Group not found or no active tickets.'], 404);
         }
 
-        // Build boarding pass URL per ticket
+        // Build boarding pass URL per ticket — public endpoint, no auth needed
         $backendBase = rtrim(env('app.baseURL', ''), '/');
-        $ticketList  = array_map(function ($t) use ($backendBase, $uploadId) {
+        $token       = rtrim(strtr(base64_encode($uploadId . '|' . $groupName), '+/', '-_'), '=');
+        $ticketList  = array_map(function ($t) use ($backendBase, $token) {
             return [
                 'id'                => (int) $t['id'],
                 'seq_no'            => $t['seq_no'],
@@ -3682,7 +3713,7 @@ HTML;
                 'seat_number'       => $t['seat_number'],
                 'ket'               => $t['ket'],
                 'ticket_code'       => $t['ticket_code'],
-                'boarding_pass_url' => $backendBase . '/api/admin/manifest/boarding-pass/' . $uploadId . '?ticket_ids=' . $t['id'],
+                'boarding_pass_url' => $backendBase . '/api/group-boarding-pass/pdf?t=' . $token . '&ticket_id=' . $t['id'],
             ];
         }, $tickets);
 
@@ -3706,6 +3737,96 @@ HTML;
     // Body JSON: { group_qr_code: "NAMA_GROUP_QR_..." }
     // or Query: ?code=NAMA_GROUP_QR_...
     // ═══════════════════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════════
+    // GET /api/group-boarding-pass/pdf?t={token}&ticket_id={id}
+    // PUBLIC — no auth required. Verifies group token then streams BP PDF.
+    // ═══════════════════════════════════════════════════════════════════
+    public function publicGroupBoardingPassPdf()
+    {
+        $db       = \Config\Database::connect();
+        $token    = $this->request->getVar('t')    ?? '';
+        $ticketId = (int) ($this->request->getVar('ticket_id') ?? 0);
+
+        // ── 1. Validate token ───────────────────────────────────────────
+        if (!$token || !$ticketId) {
+            return $this->response->setStatusCode(400)
+                ->setJSON(['error' => 'Missing token or ticket_id.']);
+        }
+
+        $b64     = strtr($token, '-_', '+/');
+        $decoded = base64_decode($b64, true);
+
+        if (!$decoded || !str_contains($decoded, '|')) {
+            return $this->response->setStatusCode(400)
+                ->setJSON(['error' => 'Invalid token.']);
+        }
+
+        [$uploadId, $groupName] = explode('|', $decoded, 2);
+        $uploadId = (int) $uploadId;
+
+        // ── 2. Verify ticket belongs to this group/upload ───────────────
+        $ticket = $db->table('manifest_tickets')
+            ->where('id', $ticketId)
+            ->where('upload_id', $uploadId)
+            ->where('group_name', $groupName)
+            ->where('cancelled', 0)
+            ->get()->getFirstRow('array');
+
+        if (!$ticket) {
+            return $this->response->setStatusCode(403)
+                ->setJSON(['error' => 'Ticket does not belong to this group.']);
+        }
+
+        // ── 3. Get upload + boat info ───────────────────────────────────
+        $upload = $db->table('manifest_uploads')
+            ->where('id', $uploadId)
+            ->get()->getFirstRow('array');
+
+        $boat = $db->table('boat')
+            ->where('id', $upload['boat_id'])
+            ->get()->getFirstRow('array');
+
+        $boatName      = $boat['boat_name'] ?? $upload['boat_name'] ?? 'NAMA KAPAL';
+        $captainName   = $upload['captain_name'] ?: ($boat['captain_name'] ?? '');
+        $tripDate      = $upload['trip_date'] ?? null;
+        $formattedDate = $tripDate ? strtoupper(date('d F Y', strtotime($tripDate))) : 'N/A';
+
+        // ── 4. Generate PDF via BoardingPassPDF library ─────────────────
+        $pdf    = new \App\Libraries\BoardingPassPDF();
+        $ket    = strtoupper($ticket['ket'] ?? '');
+        $origin = $upload['origin'] ?? 'BAYWALK';
+        $dest   = $upload['destination'] ?? 'SEPA';
+
+        $pdf->addBoardingPassPage(
+            passengerName : $ticket['passenger_name'],
+            ticketCode    : $ticket['ticket_code'] ?? '',
+            seatNumber    : $ticket['seat_number'] ?? '-',
+            boatName      : $boatName,
+            origin        : $origin,
+            destination   : $dest,
+            tripDate      : $formattedDate,
+            ket           : $ket,
+            captainName   : $captainName,
+            groupName     : $ticket['group_name'] ?? '',
+            agentName     : $ticket['agent'] ?? '',
+            packageName   : $ticket['package'] ?? '',
+            seqNo         : $ticket['seq_no'] ?? 1,
+        );
+
+        $filename   = 'BP-' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $ticket['passenger_name']) . '.pdf';
+        $pdfContent = $pdf->output('S');
+
+        while (ob_get_level() > 0) ob_end_clean();
+
+        return $this->response
+            ->setHeader('Content-Type', 'application/pdf')
+            ->setHeader('Content-Disposition', 'inline; filename="' . $filename . '"')
+            ->setHeader('Cache-Control', 'private, max-age=300')
+            ->setHeader('Access-Control-Allow-Origin', '*')
+            ->setStatusCode(200)
+            ->setBody($pdfContent);
+    }
+
     public function boardingPassSelfService()
     {
         if (!$this->isAdminUser()) {
