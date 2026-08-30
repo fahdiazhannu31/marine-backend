@@ -3782,49 +3782,13 @@ HTML;
             ->where('id', $uploadId)
             ->get()->getFirstRow('array');
 
-        $boat = $db->table('boat')
-            ->where('id', $upload['boat_id'])
-            ->get()->getFirstRow('array');
+        // ── 4. Delegate ke boardingPass() — reuse existing PDF logic ─────
+        // Override request var ticket_ids so boardingPass() renders only this ticket
+        $_GET['ticket_ids'] = (string) $ticketId;
+        $_REQUEST['ticket_ids'] = (string) $ticketId;
 
-        $boatName      = $boat['boat_name'] ?? $upload['boat_name'] ?? 'NAMA KAPAL';
-        $captainName   = $upload['captain_name'] ?: ($boat['captain_name'] ?? '');
-        $tripDate      = $upload['trip_date'] ?? null;
-        $formattedDate = $tripDate ? strtoupper(date('d F Y', strtotime($tripDate))) : 'N/A';
-
-        // ── 4. Generate PDF via BoardingPassPDF library ─────────────────
-        $pdf    = new \App\Libraries\BoardingPassPDF();
-        $ket    = strtoupper($ticket['ket'] ?? '');
-        $origin = $upload['origin'] ?? 'BAYWALK';
-        $dest   = $upload['destination'] ?? 'SEPA';
-
-        $pdf->addBoardingPassPage(
-            passengerName : $ticket['passenger_name'],
-            ticketCode    : $ticket['ticket_code'] ?? '',
-            seatNumber    : $ticket['seat_number'] ?? '-',
-            boatName      : $boatName,
-            origin        : $origin,
-            destination   : $dest,
-            tripDate      : $formattedDate,
-            ket           : $ket,
-            captainName   : $captainName,
-            groupName     : $ticket['group_name'] ?? '',
-            agentName     : $ticket['agent'] ?? '',
-            packageName   : $ticket['package'] ?? '',
-            seqNo         : $ticket['seq_no'] ?? 1,
-        );
-
-        $filename   = 'BP-' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $ticket['passenger_name']) . '.pdf';
-        $pdfContent = $pdf->output('S');
-
-        while (ob_get_level() > 0) ob_end_clean();
-
-        return $this->response
-            ->setHeader('Content-Type', 'application/pdf')
-            ->setHeader('Content-Disposition', 'inline; filename="' . $filename . '"')
-            ->setHeader('Cache-Control', 'private, max-age=300')
-            ->setHeader('Access-Control-Allow-Origin', '*')
-            ->setStatusCode(200)
-            ->setBody($pdfContent);
+        // Call the existing boardingPass method which handles full PDF generation
+        return $this->boardingPass($uploadId);
     }
 
     public function boardingPassSelfService()
