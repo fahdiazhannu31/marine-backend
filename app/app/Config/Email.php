@@ -6,19 +6,30 @@ use CodeIgniter\Config\BaseConfig;
 
 class Email extends BaseConfig
 {
-    public string $fromEmail  = '';
-    public string $fromName   = '';
+    public string $fromEmail  = 'noreply@namamarine.cloud';
+    public string $fromName   = 'NAMA Marine';
     public string $recipients = '';
-
-    /**
-     * The "user agent"
-     */
-    public string $userAgent = 'CodeIgniter';
-
-    /**
-     * The mail sending protocol: mail, sendmail, smtp
-     */
-    public string $protocol = 'smtp';
+    public string $userAgent  = 'CodeIgniter';
+    public string $protocol   = 'smtp';
+    public string $mailPath   = '/usr/sbin/sendmail';
+    public string $SMTPHost   = 'smtp-relay.brevo.com';
+    public string $SMTPUser   = '';  // set via .env: email.SMTPUser
+    public string $SMTPPass   = '';  // set via .env: email.SMTPPass
+    public int    $SMTPPort   = 587;
+    public int    $SMTPTimeout = 10;
+    public bool   $SMTPKeepAlive = false;
+    public string $SMTPCrypto = 'tls';
+    public bool   $wordWrap   = true;
+    public int    $wrapChars  = 76;
+    public string $mailType   = 'html';
+    public string $charset    = 'UTF-8';
+    public bool   $validate   = false;
+    public int    $priority   = 3;
+    public string $CRLF       = "\r\n";
+    public string $newline    = "\r\n";
+    public bool   $BCCBatchMode = false;
+    public int    $BCCBatchSize = 200;
+    public bool   $DSN        = false;
 
     /**
      * The server path to Sendmail.
