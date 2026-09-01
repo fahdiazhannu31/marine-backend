@@ -82,7 +82,8 @@ class CrewController extends ApiController
             // Check-in status for today
             $checkin = $db->table('crew_checkins')
                 ->where('crew_id', $row['id'])
-                ->where('DATE(checked_in_at)', $today)
+                ->where('checked_in_at >=', $today . ' 00:00:00')
+                ->where('checked_in_at <=', $today . ' 23:59:59')
                 ->orderBy('id', 'DESC')
                 ->get()->getFirstRow('array');
             $row['checked_in_today'] = $checkin ? true : false;
@@ -501,7 +502,8 @@ class CrewController extends ApiController
         foreach ($rows as &$row) {
             $checkin = $db->table('crew_checkins')
                 ->where('crew_id', $row['crew_id'])
-                ->where('DATE(checked_in_at)', $row['trip_date'])
+                ->where('checked_in_at >=', $row['trip_date'] . ' 00:00:00')
+                ->where('checked_in_at <=', $row['trip_date'] . ' 23:59:59')
                 ->orderBy('id', 'DESC')
                 ->get()->getFirstRow('array');
             $row['checked_in']    = $checkin ? true : false;
@@ -566,7 +568,8 @@ class CrewController extends ApiController
         // Already checked-in today?
         $checkins = $db->table('crew_checkins')
             ->where('crew_id', $crew['id'])
-            ->where('DATE(checked_in_at)', $today)
+            ->where('checked_in_at >=', $today . ' 00:00:00')
+            ->where('checked_in_at <=', $today . ' 23:59:59')
             ->orderBy('checked_in_at', 'DESC')
             ->get()->getResultArray();
 

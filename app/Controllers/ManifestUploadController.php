@@ -3024,7 +3024,8 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             // Already checked in today?
             $existingCheckin = $db->table('crew_checkins')
                 ->where('crew_id', $crew['id'])
-                ->where('DATE(checked_in_at)', $today)
+                ->where('checked_in_at >=', $today . ' 00:00:00')
+                ->where('checked_in_at <=', $today . ' 23:59:59')
                 ->orderBy('id', 'DESC')
                 ->get()->getFirstRow('array');
 
@@ -3045,7 +3046,8 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             // Fetch fresh checkins
             $checkinsToday = $db->table('crew_checkins')
                 ->where('crew_id', $crew['id'])
-                ->where('DATE(checked_in_at)', $today)
+                ->where('checked_in_at >=', $today . ' 00:00:00')
+                ->where('checked_in_at <=', $today . ' 23:59:59')
                 ->orderBy('checked_in_at', 'DESC')
                 ->get()->getResultArray();
 
@@ -3139,7 +3141,8 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         $groupCheckins = $db->table('manifest_group_checkins')
             ->where('upload_id', $upload['id'])
             ->where('group_name', $ticket['group_name'])
-            ->where('DATE(checked_in_at)', $today)
+            ->where('checked_in_at >=', $today . ' 00:00:00')
+            ->where('checked_in_at <=', $today . ' 23:59:59')
             ->orderBy('checked_in_at', 'DESC')
             ->get()
             ->getResultArray();
@@ -3268,8 +3271,9 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
                 ->where('crew_id', $row['crew_id'])
                 ->groupStart()
                     ->where('assignment_id', $row['assignment_id'])
-                    ->orWhere('DATE(checked_in_at)', $tripDate)
+                    ->orWhere('checked_in_at >=', $tripDate . ' 00:00:00')
                 ->groupEnd()
+                ->where('checked_in_at <=', $tripDate . ' 23:59:59')
                 ->orderBy('id', 'DESC')
                 ->get()->getFirstRow('array');
 
