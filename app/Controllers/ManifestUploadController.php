@@ -862,7 +862,6 @@ class ManifestUploadController extends ApiController
             $groupQrCodes = $this->generateGroupQrCodes($uploadId, $ticketRows);
         } catch (\Exception $e) {
             log_message('error', "Failed to generate group QR codes: " . $e->getMessage());
-            // Continue even if QR generation fails — upload is still valid
         }
 
         // Update manifest_uploads with generated QR codes
@@ -870,6 +869,14 @@ class ManifestUploadController extends ApiController
             'group_qr_codes'       => json_encode($groupQrCodes),
             'qr_generation_status' => !empty($groupQrCodes) ? 'generated' : 'failed',
         ]);
+
+        // ── 11. Auto-assign captain to schedule ──────────────────────
+        $captainAssignResult = ['status' => 'skipped'];
+        if ($captainName && $scheduleId) {
+            $captainAssignResult = $this->autoAssignCaptain(
+                $captainName, $scheduleId, $boatId, $tripDate, $direction
+            );
+        }
 
         return $this->jsonResponse([
             'message'         => 'Manifest uploaded and seats assigned successfully.',
@@ -887,7 +894,91 @@ class ManifestUploadController extends ApiController
             'crew_names'      => $abkNamesRaw ?: null,
             'gro_name'        => $headerMeta['gro_name'],
             'group_qr_codes'  => $groupQrCodes,
+            'captain_assign'  => $captainAssignResult,
         ], 201);
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Helper: auto-assign captain from manifest to schedule
+    // Returns status array for frontend notification
+    // ─────────────────────────────────────────────────────────────
+    private function autoAssignCaptain(
+        string $captainName,
+        int    $scheduleId,
+        int    $boatId,
+        string $tripDate,
+        string $direction
+    ): array {
+        $db = \Config\Database::connect();
+
+        // 1. Exact match (case-insensitive)
+        $crew = $db->table('crew')
+            ->where('role', 'captain')
+            ->where('active', 1)
+            ->groupStart()
+                ->where('LOWER(name)', strtolower($captainName))
+            ->groupEnd()
+            ->get()->getFirstRow('array');
+
+        // 2. Fallback: fuzzy match — any word from captain name
+        if (!$crew) {
+            $words = array_filter(explode(' ', $captainName));
+            $qb    = $db->table('crew')->where('role', 'captain')->where('active', 1);
+            $qb->groupStart();
+            foreach ($words as $word) {
+                if (strlen($word) >= 3) {
+                    $qb->orLike('name', $word, 'both');
+                }
+            }
+            $qb->groupEnd();
+            $crew = $qb->get()->getFirstRow('array');
+        }
+
+        // 3. Captain not found in crew database
+        if (!$crew) {
+            return [
+                'status'         => 'not_found',
+                'captain_name'   => $captainName,
+                'message'        => "Captain \"{$captainName}\" tidak ditemukan di database crew. Silakan tambah terlebih dahulu.",
+            ];
+        }
+
+        // 4. Check if already assigned to this schedule + direction
+        $already = $db->table('crew_assignments')
+            ->where('crew_id', $crew['id'])
+            ->where('schedule_id', $scheduleId)
+            ->where('trip_date', $tripDate)
+            ->where('direction', $direction)
+            ->countAllResults();
+
+        if ($already) {
+            return [
+                'status'       => 'already_assigned',
+                'captain_name' => $crew['name'],
+                'crew_id'      => $crew['id'],
+                'message'      => "Captain {$crew['name']} sudah di-assign ke schedule ini.",
+            ];
+        }
+
+        // 5. Auto-insert assignment
+        $now = date('Y-m-d H:i:s');
+        $db->table('crew_assignments')->insert([
+            'crew_id'     => $crew['id'],
+            'schedule_id' => $scheduleId,
+            'boat_id'     => $boatId ?: null,
+            'trip_date'   => $tripDate,
+            'direction'   => $direction,
+            'notes'       => 'Auto-assigned from manifest upload',
+            'created_at'  => $now,
+            'updated_at'  => $now,
+        ]);
+
+        return [
+            'status'       => 'assigned',
+            'captain_name' => $crew['name'],
+            'crew_id'      => $crew['id'],
+            'message'      => "Captain {$crew['name']} berhasil di-assign ke schedule.",
+        ];
     }
 
     // ─────────────────────────────────────────────────────────────
