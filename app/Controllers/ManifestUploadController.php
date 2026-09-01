@@ -3243,12 +3243,18 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         $db    = \Config\Database::connect();
         $today = date('Y-m-d');
 
+        // Allow caller to pass trip_date directly (more reliable than schedule lookup)
+        $tripDateParam = $this->request->getVar('trip_date');
+
         // Get schedule info to know trip_date
         $schedule = $db->table('schedule')
             ->where('id', $scheduleId)
             ->get()->getFirstRow('array');
 
-        $tripDate = $schedule ? substr($schedule['date'], 0, 10) : $today;
+        // Priority: query param > schedule.date > today
+        $tripDate = $tripDateParam
+            ? substr($tripDateParam, 0, 10)
+            : ($schedule ? substr($schedule['date'], 0, 10) : $today);
 
         // All crew assigned to this schedule OR same trip_date
         $assignments = $db->table('crew_assignments ca')
@@ -3267,12 +3273,12 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             ->get()->getResultArray();
 
         foreach ($assignments as &$row) {
+            // Look up check-in purely by crew_id + date range
+            // Do NOT filter by assignment_id — check-in via scanner
+            // auto-inserts without knowing assignment_id
             $checkin = $db->table('crew_checkins')
                 ->where('crew_id', $row['crew_id'])
-                ->groupStart()
-                    ->where('assignment_id', $row['assignment_id'])
-                    ->orWhere('checked_in_at >=', $tripDate . ' 00:00:00')
-                ->groupEnd()
+                ->where('checked_in_at >=', $tripDate . ' 00:00:00')
                 ->where('checked_in_at <=', $tripDate . ' 23:59:59')
                 ->orderBy('id', 'DESC')
                 ->get()->getFirstRow('array');
