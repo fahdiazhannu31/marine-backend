@@ -451,13 +451,32 @@ class ManifestUploadController extends ApiController
             // ── Try parse date from row (e.g. "Thursday, 27 August 2026") ──
             if (!$meta['trip_date']) {
                 $allText = strtoupper(implode(' ', array_map('strval', array_values($row))));
-                // Look for pattern: day_number + month_name + year
+
+                // Pattern 1: "27 AUGUST 2026" or "THURSDAY 27 AUGUST 2026"
                 if (preg_match('/\b(\d{1,2})\s+(' . implode('|', array_keys($months)) . ')\s+(\d{4})\b/u', $allText, $dm)) {
-                    $day   = (int) $dm[1];
-                    $mon   = $months[$dm[2]] ?? 0;
-                    $year  = (int) $dm[3];
+                    $day  = (int) $dm[1];
+                    $mon  = $months[$dm[2]] ?? 0;
+                    $year = (int) $dm[3];
                     if ($day && $mon && $year > 2000) {
                         $meta['trip_date'] = sprintf('%04d-%02d-%02d', $year, $mon, $day);
+                    }
+                }
+
+                // Pattern 2: Excel numeric date serial (e.g. 46269)
+                // Excel serial 1 = 1900-01-01, but has off-by-2 bug so use 25569 offset from Unix
+                if (!$meta['trip_date']) {
+                    foreach (array_values($row) as $cell) {
+                        $v = trim((string) $cell);
+                        if (is_numeric($v) && (int)$v > 40000 && (int)$v < 60000) {
+                            // Convert Excel serial to Unix timestamp
+                            $unixTimestamp = ((int)$v - 25569) * 86400;
+                            $parsed = date('Y-m-d', $unixTimestamp);
+                            // Sanity check: year 2000-2040
+                            if ($parsed >= '2000-01-01' && $parsed <= '2040-12-31') {
+                                $meta['trip_date'] = $parsed;
+                                break;
+                            }
+                        }
                     }
                 }
             }
@@ -655,18 +674,24 @@ class ManifestUploadController extends ApiController
         $headerMeta    = $this->parseManifestHeader($preHeaderRows);
 
         // ── 5c. Validate Excel trip_date matches schedule date ────────
-        if (!empty($headerMeta['trip_date'])) {
-            $excelDate    = $headerMeta['trip_date'];             // e.g. 2026-08-27
-            $scheduleDate = substr($schedule['date'], 0, 10);     // e.g. 2026-08-27
+        $scheduleDate = substr($schedule['date'], 0, 10);
+        $excelDate    = $headerMeta['trip_date'] ?? null;
 
-            if ($excelDate !== $scheduleDate) {
-                @unlink($savedPath);
-                return $this->jsonResponse([
-                    'error'          => "Tanggal di manifest Excel ({$excelDate}) tidak sesuai dengan tanggal schedule yang dipilih ({$scheduleDate}). Pastikan manifest yang diupload sesuai dengan schedule.",
-                    'excel_date'     => $excelDate,
-                    'schedule_date'  => $scheduleDate,
-                ], 422);
-            }
+        log_message('info', "Manifest upload — schedule_date: {$scheduleDate}, excel_date: " . ($excelDate ?? 'NOT_PARSED'));
+
+        if ($excelDate !== null && $excelDate !== $scheduleDate) {
+            // Date parsed and doesn't match — hard block
+            @unlink($savedPath);
+            return $this->jsonResponse([
+                'error'         => "Tanggal manifest Excel ({$excelDate}) tidak sesuai dengan tanggal schedule yang dipilih ({$scheduleDate}). Pastikan manifest yang diupload sesuai dengan schedule.",
+                'excel_date'    => $excelDate,
+                'schedule_date' => $scheduleDate,
+            ], 422);
+        }
+
+        if ($excelDate === null) {
+            // Could not parse date from Excel — warn but allow upload
+            log_message('warning', "Manifest upload — could not parse trip_date from Excel header. Skipping date validation.");
         }
 
         // Override captain / abk from form fields if they were explicitly provided,
