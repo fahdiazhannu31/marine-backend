@@ -398,47 +398,7 @@ class CrewController extends ApiController
 
     // ═══════════════════════════════════════════════════════
     // ASSIGNMENTS
-    // ═══════════════════════════════════════════════════════
-
-    // GET /api/admin/crew/assignments?date=YYYY-MM-DD|schedule_id=X
-    public function listAssignments()
-    {
-        if (!$this->isAdminUser()) return $this->jsonResponse(['error' => 'Forbidden.'], 403);
-
-        $db         = \Config\Database::connect();
-        $date       = $this->request->getVar('date') ?: date('Y-m-d');
-        $scheduleId = (int) ($this->request->getVar('schedule_id') ?? 0);
-
-        $qb = $db->table('crew_assignments ca')
-            ->select('ca.*, c.name as crew_name, c.role, c.qr_code, b.boat_name, s.date as schedule_date')
-            ->join('crew c', 'c.id = ca.crew_id', 'left')
-            ->join('boat b', 'b.id = ca.boat_id', 'left')
-            ->join('schedule s', 's.id = ca.schedule_id', 'left')
-            ->orderBy('c.role', 'ASC')
-            ->orderBy('c.name', 'ASC');
-
-        if ($scheduleId) {
-            $qb->where('ca.schedule_id', $scheduleId);
-        } else {
-            $qb->where('ca.trip_date', $date);
-        }
-
-        $rows = $qb->get()->getResultArray();
-
-        // Attach check-in status
-        foreach ($rows as &$row) {
-            $checkin = $db->table('crew_checkins')
-                ->where('crew_id', $row['crew_id'])
-                ->where('assignment_id', $row['id'])
-                ->orderBy('id', 'DESC')
-                ->get()->getFirstRow('array');
-            $row['checked_in']    = $checkin ? true : false;
-            $row['checked_in_at'] = $checkin['checked_in_at'] ?? null;
-        }
-        unset($row);
-
-        return $this->jsonResponse($rows);
-    }
+    // GET /api/admin/crew/assignments/calendar?month=YYYY-MM
 
     // POST /api/admin/crew/assignments
     // Body: { crew_id, schedule_id, boat_id, trip_date, direction }
