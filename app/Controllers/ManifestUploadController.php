@@ -361,11 +361,20 @@ class ManifestUploadController extends ApiController
             'captain_name'    => null,
             'crew_names'      => null,
             'gro_name'        => null,
+            'trip_date'       => null,   // parsed from Excel header
             'overnight_count' => 0,
             'daytrip_count'   => 0,
             'staff_count'     => 0,
             'foc_count'       => 0,
             'vendor_count'    => 0,
+        ];
+
+        $months = [
+            'JANUARY'=>1,'FEBRUARI'=>2,'FEBRUARY'=>2,'MARET'=>3,'MARCH'=>3,
+            'APRIL'=>4,'MEI'=>5,'MAY'=>5,'JUNI'=>6,'JUNE'=>6,
+            'JULI'=>7,'JULY'=>7,'AGUSTUS'=>8,'AUGUST'=>8,
+            'SEPTEMBER'=>9,'OKTOBER'=>10,'OCTOBER'=>10,
+            'NOVEMBER'=>11,'DESEMBER'=>12,'DECEMBER'=>12,
         ];
 
         // Flatten every pre-header row into one big "key→value" scan.
@@ -435,6 +444,20 @@ class ManifestUploadController extends ApiController
                             }
                         }
                         break;
+                    }
+                }
+            }
+
+            // ── Try parse date from row (e.g. "Thursday, 27 August 2026") ──
+            if (!$meta['trip_date']) {
+                $allText = strtoupper(implode(' ', array_map('strval', array_values($row))));
+                // Look for pattern: day_number + month_name + year
+                if (preg_match('/\b(\d{1,2})\s+(' . implode('|', array_keys($months)) . ')\s+(\d{4})\b/u', $allText, $dm)) {
+                    $day   = (int) $dm[1];
+                    $mon   = $months[$dm[2]] ?? 0;
+                    $year  = (int) $dm[3];
+                    if ($day && $mon && $year > 2000) {
+                        $meta['trip_date'] = sprintf('%04d-%02d-%02d', $year, $mon, $day);
                     }
                 }
             }
@@ -628,10 +651,23 @@ class ManifestUploadController extends ApiController
         }
 
         // ── 5b. Parse metadata from pre-header rows ──────────────────
-        // Rows 0..(headerIdx-1) contain boat name, origin, destination,
-        // nahkoda, crew, GRO, and category counts (OVERNIGHT/DAY TRIP/STAFF/FOC/VENDOR)
         $preHeaderRows = array_slice($allRows, 0, $headerIdx);
         $headerMeta    = $this->parseManifestHeader($preHeaderRows);
+
+        // ── 5c. Validate Excel trip_date matches schedule date ────────
+        if (!empty($headerMeta['trip_date'])) {
+            $excelDate    = $headerMeta['trip_date'];             // e.g. 2026-08-27
+            $scheduleDate = substr($schedule['date'], 0, 10);     // e.g. 2026-08-27
+
+            if ($excelDate !== $scheduleDate) {
+                @unlink($savedPath);
+                return $this->jsonResponse([
+                    'error'          => "Tanggal di manifest Excel ({$excelDate}) tidak sesuai dengan tanggal schedule yang dipilih ({$scheduleDate}). Pastikan manifest yang diupload sesuai dengan schedule.",
+                    'excel_date'     => $excelDate,
+                    'schedule_date'  => $scheduleDate,
+                ], 422);
+            }
+        }
 
         // Override captain / abk from form fields if they were explicitly provided,
         // otherwise fall back to what we found in the Excel header.
@@ -3243,23 +3279,21 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         $db    = \Config\Database::connect();
         $today = date('Y-m-d');
 
-        // Allow caller to pass trip_date directly (more reliable than schedule lookup)
+        // Caller MUST pass trip_date from the manifest upload record
+        // This is more reliable than schedule.date lookup
         $tripDateParam = $this->request->getVar('trip_date');
 
-        // Get schedule info to know trip_date
+        // Get schedule info as fallback
         $schedule = $db->table('schedule')
             ->where('id', $scheduleId)
             ->get()->getFirstRow('array');
 
-        // Priority: query param > trip_date from schedule
-        // Check-in should happen on the actual trip date
-        $checkDate = $tripDateParam
+        // Use trip_date from manifest upload (query param) → schedule.date → today
+        $tripDate = $tripDateParam
             ? substr($tripDateParam, 0, 10)
             : ($schedule ? substr($schedule['date'], 0, 10) : $today);
 
         // All crew assigned to this schedule OR same trip_date
-        $tripDate = $schedule ? substr($schedule['date'], 0, 10) : $today;
-
         $assignments = $db->table('crew_assignments ca')
             ->select('ca.id as assignment_id, ca.direction, ca.notes as assignment_notes,
                       c.id as crew_id, c.name, c.role, c.phone, c.qr_code,
@@ -3276,12 +3310,11 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             ->get()->getResultArray();
 
         foreach ($assignments as &$row) {
-            // Check-in lookup uses $checkDate (today or param), NOT trip_date
-            // Crew scans QR on the actual day they work, not the manifest trip date
+            // Check-in lookup by crew_id + trip_date range
             $checkin = $db->table('crew_checkins')
                 ->where('crew_id', $row['crew_id'])
-                ->where('checked_in_at >=', $checkDate . ' 00:00:00')
-                ->where('checked_in_at <=', $checkDate . ' 23:59:59')
+                ->where('checked_in_at >=', $tripDate . ' 00:00:00')
+                ->where('checked_in_at <=', $tripDate . ' 23:59:59')
                 ->orderBy('id', 'DESC')
                 ->get()->getFirstRow('array');
 
@@ -3293,7 +3326,6 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         return $this->jsonResponse([
             'schedule_id' => $scheduleId,
             'trip_date'   => $tripDate,
-            'check_date'  => $checkDate,
             'crew'        => $assignments,
         ]);
     }

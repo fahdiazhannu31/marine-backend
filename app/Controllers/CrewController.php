@@ -67,7 +67,7 @@ class CrewController extends ApiController
 
         $rows = $qb->get()->getResultArray();
 
-        // Attach today's assignment if any
+        // Attach today's assignment if any (for display purposes only)
         $today = date('Y-m-d');
         foreach ($rows as &$row) {
             $assignment = $db->table('crew_assignments ca')
@@ -78,16 +78,6 @@ class CrewController extends ApiController
                 ->where('ca.trip_date', $today)
                 ->get()->getFirstRow('array');
             $row['today_assignment'] = $assignment;
-
-            // Check-in status for today
-            $checkin = $db->table('crew_checkins')
-                ->where('crew_id', $row['id'])
-                ->where('checked_in_at >=', $today . ' 00:00:00')
-                ->where('checked_in_at <=', $today . ' 23:59:59')
-                ->orderBy('id', 'DESC')
-                ->get()->getFirstRow('array');
-            $row['checked_in_today'] = $checkin ? true : false;
-            $row['checked_in_at']    = $checkin['checked_in_at'] ?? null;
         }
         unset($row);
 
