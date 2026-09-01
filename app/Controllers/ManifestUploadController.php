@@ -3594,6 +3594,10 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             $emailBody = $this->buildGroupQrEmailBody($groupInfo, $groupQrData, $upload);
 
             $emailService->setTo($groupEmail);
+            $emailService->setFrom(
+                $emailConfig->fromEmail ?: 'noreply@namamarine.cloud',
+                $emailConfig->fromName  ?: 'NAMA Marine'
+            );
             $emailService->setSubject($emailSubject);
             $emailService->setMessage($emailBody);
             $emailService->setMailType('html');
