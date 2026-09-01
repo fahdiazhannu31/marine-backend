@@ -3604,7 +3604,8 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
                     $sentCount++;
                     log_message('info', "Successfully sent QR email to {$groupEmail} (group: {$groupName})");
                 } else {
-                    log_message('error', "Failed to send email to {$groupEmail} (group: {$groupName})");
+                    $debugInfo = $emailService->printDebugger(['headers', 'subject', 'body']);
+                    log_message('error', "Failed to send email to {$groupEmail} (group: {$groupName}): " . $debugInfo);
                     $failedGroups[] = $groupName;
                 }
             } catch (\Exception $e) {
