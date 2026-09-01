@@ -3251,12 +3251,11 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             ->where('id', $scheduleId)
             ->get()->getFirstRow('array');
 
-        // Priority: query param > today
-        // NOTE: Use today's date for check-in lookup, not trip_date
-        // because crew checks in on the actual day of operation
+        // Priority: query param > trip_date from schedule
+        // Check-in should happen on the actual trip date
         $checkDate = $tripDateParam
             ? substr($tripDateParam, 0, 10)
-            : $today;
+            : ($schedule ? substr($schedule['date'], 0, 10) : $today);
 
         // All crew assigned to this schedule OR same trip_date
         $tripDate = $schedule ? substr($schedule['date'], 0, 10) : $today;
