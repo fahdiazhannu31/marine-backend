@@ -3635,89 +3635,73 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
 
     private function buildGroupQrEmailBody(array $groupInfo, array $qrData, array $upload): string
     {
-        $groupName = $groupInfo['group_name'] ?? 'Group';
-        $leadName = $groupInfo['lead_name'] ?? 'Valued Guest';
+        $groupName   = $groupInfo['group_name'] ?? 'Group';
+        $leadName    = $groupInfo['lead_name']   ?? 'Valued Guest';
         $membersList = implode(', ', $groupInfo['members'] ?? []);
-        $boatName = $upload['boat_name'] ?? 'NAMA Boat';
-        $origin = $upload['origin'] ?? 'Baywalk';
-        $dest = $upload['destination'] ?? 'Sepa';
-        $tripDate = $upload['trip_date'] ? date('d F Y', strtotime($upload['trip_date'])) : 'TBA';
-        $qrImage = $qrData['qr_data_url'] ?? null;
+        $boatName    = $upload['boat_name']      ?? 'NAMA Boat';
+        $origin      = $upload['origin']         ?? 'Baywalk';
+        $dest        = $upload['destination']    ?? 'Sepa';
+        $tripDate    = $upload['trip_date']
+            ? date('d F Y', strtotime($upload['trip_date']))
+            : 'TBA';
 
-        $html = <<<HTML
+        // QR content is the boarding pass URL — use as direct clickable link
+        $boardingPassUrl = $qrData['qr_content'] ?? null;
+        $hasUrl = $boardingPassUrl && str_starts_with($boardingPassUrl, 'http');
+
+        $btnHtml = $hasUrl
+            ? "<a href=\"{$boardingPassUrl}\" style=\"display:inline-block;background:#F2881C;color:#fff;padding:14px 32px;text-decoration:none;border-radius:6px;font-size:16px;font-weight:bold;\">🎫 Buka Boarding Pass</a>"
+            : "<p style='color:#888'>Link boarding pass tidak tersedia.</p>";
+
+        $urlText = $hasUrl
+            ? "<p style='font-size:12px;color:#888;word-break:break-all;margin-top:8px;'>Link: <a href=\"{$boardingPassUrl}\" style='color:#F2881C;'>{$boardingPassUrl}</a></p>"
+            : '';
+
+        return <<<HTML
 <!DOCTYPE html>
 <html>
-<head>
-    <meta charset="UTF-8">
-    <style>
-        body { font-family: Arial, sans-serif; color: #333; }
-        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background-color: #F2881C; color: white; padding: 20px; text-align: center; border-radius: 4px; }
-        .header h1 { margin: 0; }
-        .body { background-color: #f9f9f9; padding: 20px; margin-top: 20px; }
-        .qr-section { text-align: center; margin: 20px 0; }
-        .qr-section img { max-width: 300px; }
-        .trip-info { background: white; padding: 15px; margin: 15px 0; border-left: 4px solid #F2881C; }
-        .trip-info p { margin: 5px 0; }
-        .footer { text-align: center; color: #999; font-size: 12px; margin-top: 20px; }
-        .btn { display: inline-block; background-color: #F2881C; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>🎫 Your Boarding Pass QR Code</h1>
-            <p>Ready for Check-in</p>
+<head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;font-family:Arial,sans-serif;background:#f5f5f5;">
+    <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:8px;overflow:hidden;">
+        <div style="background:#F2881C;color:#fff;padding:24px 32px;text-align:center;">
+            <h1 style="margin:0;font-size:22px;">⚓ NAMA Marine</h1>
+            <p style="margin:6px 0 0;opacity:.85;font-size:14px;">Boarding Pass — Self Service</p>
         </div>
-
-        <div class="body">
-            <p>Dear <strong>{$leadName}</strong>,</p>
-
-            <p>Your boarding pass QR code is ready! Please scan the QR code below at our admin counter to check in and generate your boarding pass.</p>
-
-            <div class="trip-info">
-                <p><strong>Group:</strong> {$groupName}</p>
-                <p><strong>Passengers:</strong> {$membersList}</p>
-                <p><strong>Boat:</strong> {$boatName}</p>
-                <p><strong>Route:</strong> {$origin} → {$dest}</p>
-                <p><strong>Date:</strong> {$tripDate}</p>
+        <div style="padding:32px;">
+            <p style="font-size:16px;margin-top:0;">Halo <strong>{$leadName}</strong>,</p>
+            <p>Boarding pass Anda sudah siap! Klik tombol di bawah untuk melihat dan mengunduh boarding pass semua anggota grup.</p>
+            <div style="background:#fff8f0;border-left:4px solid #F2881C;padding:16px;margin:20px 0;border-radius:4px;">
+                <table style="width:100%;font-size:14px;border-collapse:collapse;">
+                    <tr><td style="padding:4px 8px;color:#888;width:120px;">Grup</td><td style="padding:4px 8px;font-weight:bold;">{$groupName}</td></tr>
+                    <tr><td style="padding:4px 8px;color:#888;">Penumpang</td><td style="padding:4px 8px;">{$membersList}</td></tr>
+                    <tr><td style="padding:4px 8px;color:#888;">Kapal</td><td style="padding:4px 8px;">{$boatName}</td></tr>
+                    <tr><td style="padding:4px 8px;color:#888;">Rute</td><td style="padding:4px 8px;">{$origin} → {$dest}</td></tr>
+                    <tr><td style="padding:4px 8px;color:#888;">Tanggal</td><td style="padding:4px 8px;font-weight:bold;">{$tripDate}</td></tr>
+                </table>
             </div>
-
-            <div class="qr-section">
-                <p><strong>Scan this QR code to generate boarding pass:</strong></p>
-HTML;
-
-        if ($qrImage) {
-            $html .= "                <img src=\"{$qrImage}\" alt=\"Group QR Code\" />\n";
-        }
-
-        $html .= <<<HTML
+            <div style="text-align:center;margin:32px 0;">
+                {$btnHtml}
             </div>
-
-            <p><strong>How to use:</strong></p>
-            <ol>
-                <li>Proceed to our admin counter on the day of travel</li>
-                <li>Have this email ready with the QR code visible</li>
-                <li>Scan the QR code with our scanner</li>
-                <li>Receive your boarding pass (physical or digital)</li>
-            </ol>
-
-            <p><strong>Questions?</strong> Contact us at our counter or call for assistance.</p>
-
-            <p>We look forward to welcoming you aboard!</p>
-            <p>Best regards,<br><strong>NAMA Marine Team</strong></p>
+            {$urlText}
+            <hr style="border:none;border-top:1px solid #eee;margin:24px 0;">
+            <p style="font-size:13px;color:#666;line-height:1.8;">
+                <strong>Cara pakai:</strong><br>
+                1. Klik tombol di atas<br>
+                2. Halaman boarding pass akan terbuka di browser<br>
+                3. Tap nama penumpang untuk unduh boarding pass masing-masing<br>
+                4. Tunjukkan boarding pass ke petugas di dermaga
+            </p>
         </div>
-
-        <div class="footer">
-            <p>This is an automated message. Please do not reply to this email.</p>
-            <p>Safe travels! 🚤</p>
+        <div style="background:#f9f9f9;padding:16px 32px;text-align:center;border-top:1px solid #eee;">
+            <p style="margin:0;font-size:12px;color:#aaa;">
+                NAMA Marine &nbsp;·&nbsp; namamarine.cloud<br>
+                Email otomatis — jangan dibalas
+            </p>
         </div>
     </div>
 </body>
 </html>
 HTML;
-
-        return $html;
     }
 
     // ═══════════════════════════════════════════════════════════════════
