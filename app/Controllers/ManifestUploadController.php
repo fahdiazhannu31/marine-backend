@@ -3251,12 +3251,16 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             ->where('id', $scheduleId)
             ->get()->getFirstRow('array');
 
-        // Priority: query param > schedule.date > today
-        $tripDate = $tripDateParam
+        // Priority: query param > today
+        // NOTE: Use today's date for check-in lookup, not trip_date
+        // because crew checks in on the actual day of operation
+        $checkDate = $tripDateParam
             ? substr($tripDateParam, 0, 10)
-            : ($schedule ? substr($schedule['date'], 0, 10) : $today);
+            : $today;
 
         // All crew assigned to this schedule OR same trip_date
+        $tripDate = $schedule ? substr($schedule['date'], 0, 10) : $today;
+
         $assignments = $db->table('crew_assignments ca')
             ->select('ca.id as assignment_id, ca.direction, ca.notes as assignment_notes,
                       c.id as crew_id, c.name, c.role, c.phone, c.qr_code,
@@ -3273,13 +3277,12 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             ->get()->getResultArray();
 
         foreach ($assignments as &$row) {
-            // Look up check-in purely by crew_id + date range
-            // Do NOT filter by assignment_id — check-in via scanner
-            // auto-inserts without knowing assignment_id
+            // Check-in lookup uses $checkDate (today or param), NOT trip_date
+            // Crew scans QR on the actual day they work, not the manifest trip date
             $checkin = $db->table('crew_checkins')
                 ->where('crew_id', $row['crew_id'])
-                ->where('checked_in_at >=', $tripDate . ' 00:00:00')
-                ->where('checked_in_at <=', $tripDate . ' 23:59:59')
+                ->where('checked_in_at >=', $checkDate . ' 00:00:00')
+                ->where('checked_in_at <=', $checkDate . ' 23:59:59')
                 ->orderBy('id', 'DESC')
                 ->get()->getFirstRow('array');
 
@@ -3291,6 +3294,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         return $this->jsonResponse([
             'schedule_id' => $scheduleId,
             'trip_date'   => $tripDate,
+            'check_date'  => $checkDate,
             'crew'        => $assignments,
         ]);
     }
