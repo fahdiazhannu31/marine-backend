@@ -187,6 +187,7 @@ $routes->options('/api/admin/crew/(:any)', 'CrewController::preflight');
 $routes->get('/api/admin/crew',                                   'CrewController::index');
 $routes->post('/api/admin/crew',                                  'CrewController::create');
 $routes->get('/api/admin/crew/assignments',                       'CrewController::listAssignments');
+$routes->get('/api/admin/crew/assignments/calendar',              'CrewController::assignmentsCalendar');
 $routes->post('/api/admin/crew/assignments',                      'CrewController::createAssignment');
 $routes->delete('/api/admin/crew/assignments/(:num)',             'CrewController::deleteAssignment/$1');
 $routes->get('/api/admin/crew/checkin-by-qr/(:any)',              'CrewController::checkinByQr/$1');

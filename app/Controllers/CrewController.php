@@ -508,9 +508,80 @@ class CrewController extends ApiController
     // CREW CHECK-IN (via permanent QR)
     // ═══════════════════════════════════════════════════════
 
-    // GET /api/admin/crew/checkin-by-qr/{qr}
-    // Returns crew info + today's assignment for the scan result page
-    public function checkinByQr(string $qr)
+    // GET /api/admin/crew/assignments/calendar?month=YYYY-MM
+    // Returns assignments grouped by date for calendar view
+    public function assignmentsCalendar()
+    {
+        if (!$this->isAdminUser()) return $this->jsonResponse(['error' => 'Forbidden.'], 403);
+
+        $db    = \Config\Database::connect();
+        $month = $this->request->getVar('month') ?: date('Y-m');
+
+        // Validate format
+        if (!preg_match('/^\d{4}-\d{2}$/', $month)) {
+            return $this->jsonResponse(['error' => 'Invalid month format. Use YYYY-MM.'], 422);
+        }
+
+        $startDate = $month . '-01';
+        $endDate   = date('Y-m-t', strtotime($startDate)); // last day of month
+
+        $rows = $db->table('crew_assignments ca')
+            ->select('ca.*, c.name as crew_name, c.role, c.phone, c.qr_code, b.boat_name, s.date as schedule_date')
+            ->join('crew c', 'c.id = ca.crew_id', 'left')
+            ->join('boat b', 'b.id = ca.boat_id', 'left')
+            ->join('schedule s', 's.id = ca.schedule_id', 'left')
+            ->where('ca.trip_date >=', $startDate)
+            ->where('ca.trip_date <=', $endDate)
+            ->orderBy('ca.trip_date', 'ASC')
+            ->orderBy('c.role', 'ASC')
+            ->orderBy('c.name', 'ASC')
+            ->get()->getResultArray();
+
+        // Attach check-in status per assignment
+        foreach ($rows as &$row) {
+            $checkin = $db->table('crew_checkins')
+                ->where('crew_id', $row['crew_id'])
+                ->where('DATE(checked_in_at)', $row['trip_date'])
+                ->orderBy('id', 'DESC')
+                ->get()->getFirstRow('array');
+            $row['checked_in']    = $checkin ? true : false;
+            $row['checked_in_at'] = $checkin['checked_in_at'] ?? null;
+        }
+        unset($row);
+
+        // Group by date
+        $byDate = [];
+        foreach ($rows as $row) {
+            $date = substr($row['trip_date'], 0, 10);
+            if (!isset($byDate[$date])) {
+                $byDate[$date] = [
+                    'date'        => $date,
+                    'assignments' => [],
+                    'total'       => 0,
+                    'checked_in'  => 0,
+                    'roles'       => [],
+                ];
+            }
+            $byDate[$date]['assignments'][] = $row;
+            $byDate[$date]['total']++;
+            if ($row['checked_in']) $byDate[$date]['checked_in']++;
+            $role = $row['role'] ?? 'other';
+            if (!in_array($role, $byDate[$date]['roles'], true)) {
+                $byDate[$date]['roles'][] = $role;
+            }
+        }
+
+        return $this->jsonResponse([
+            'month'      => $month,
+            'start_date' => $startDate,
+            'end_date'   => $endDate,
+            'by_date'    => $byDate,
+            'total_assignments' => count($rows),
+        ]);
+    }
+
+    // GET /api/admin/crew/assignments?date=YYYY-MM-DD|schedule_id=X
+    public function listAssignments()
     {
         if (!$this->isAdminUser()) return $this->jsonResponse(['error' => 'Forbidden.'], 403);
 
