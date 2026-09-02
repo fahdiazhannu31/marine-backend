@@ -3686,7 +3686,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         $hasUrl = $boardingPassUrl && str_starts_with($boardingPassUrl, 'http');
 
         $btnHtml = $hasUrl
-            ? "<a href=\"{$boardingPassUrl}\" style=\"display:inline-block;background:#F2881C;color:#fff;padding:14px 32px;text-decoration:none;border-radius:6px;font-size:16px;font-weight:bold;\">🎫 Buka Boarding Pass</a>"
+            ? "<a href=\"{$boardingPassUrl}\" style=\"display:inline-block;background:#F2881C;color:#fff;padding:14px 32px;text-decoration:none;border-radius:6px;font-size:16px;font-weight:bold;\">Buka Boarding Pass</a>"
             : "<p style='color:#888'>Link boarding pass tidak tersedia.</p>";
 
         $urlText = $hasUrl
