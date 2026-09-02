@@ -3564,9 +3564,10 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
 
         // Load email config directly from Config\Email class (not .env)
         $emailConfig = new \Config\Email();
-        $emailService = \Config\Services::email($emailConfig);
 
         foreach ($groupContactMap as $groupName => $groupInfo) {
+            // Fresh email service per iteration — prevents attachments carrying over
+            $emailService = \Config\Services::email($emailConfig, true);
             // Get QR for this group
             $groupQrData = $groupQrs[$groupName] ?? null;
             if (!$groupQrData) {
@@ -3652,8 +3653,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             if ($qrTempFile && file_exists($qrTempFile)) {
                 @unlink($qrTempFile);
             }
-
-            $emailService->clear();
+            // No clear() needed — fresh $emailService created per iteration
         }
 
         // Update send status
