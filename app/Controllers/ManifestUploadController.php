@@ -3700,7 +3700,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             $logoB64  = base64_encode(file_get_contents($logoPath));
             $logoHtml = "<img src=\"data:image/webp;base64,{$logoB64}\" alt=\"NAMA Marine\" style=\"height:60px;max-width:200px;object-fit:contain;margin-bottom:8px;\" />";
         } else {
-            $logoHtml = "<span style='font-size:20px;font-weight:800;color:#fff;'>⚓ NAMA Marine</span>";
+            $logoHtml = "<span style='font-size:20px;font-weight:800;color:#fff;'>NAMA Marine</span>";
         }
 
         return <<<HTML
