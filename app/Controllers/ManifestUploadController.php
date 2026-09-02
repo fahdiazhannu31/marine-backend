@@ -3566,8 +3566,8 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         $emailConfig = new \Config\Email();
 
         foreach ($groupContactMap as $groupName => $groupInfo) {
-            // Fresh email service per iteration — prevents attachments carrying over
-            $emailService = \Config\Services::email($emailConfig, true);
+            // Create brand-new Email instance per iteration — guarantees no attachment carryover
+            $emailService = new \CodeIgniter\Email\Email($emailConfig);
             // Get QR for this group
             $groupQrData = $groupQrs[$groupName] ?? null;
             if (!$groupQrData) {
@@ -3695,6 +3695,10 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
 
         // Logo — embed as base64 inline to avoid Gmail blocking external images
         $logoPath = FCPATH . 'assets_users/images/logo.webp';
+        // Fallback: try server absolute path if FCPATH doesn't work
+        if (!file_exists($logoPath)) {
+            $logoPath = '/var/www/marine-backend/public/assets_users/images/logo.webp';
+        }
         $logoHtml = '';
         if (file_exists($logoPath)) {
             $logoB64  = base64_encode(file_get_contents($logoPath));
