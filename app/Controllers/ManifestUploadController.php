@@ -3591,7 +3591,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             }
 
             // Compose email
-            $emailSubject = "🎫 Boarding Pass QR Code - {$groupName}";
+            $emailSubject = "Boarding Pass QR Code - {$groupName}";
             $emailBody = $this->buildGroupQrEmailBody($groupInfo, $groupQrData, $upload);
 
             // Generate QR PNG for attachment
@@ -3693,6 +3693,16 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             ? "<p style='font-size:12px;color:#888;word-break:break-all;margin-top:8px;'>Link: <a href=\"{$boardingPassUrl}\" style='color:#F2881C;'>{$boardingPassUrl}</a></p>"
             : '';
 
+        // Logo — embed as base64 inline to avoid Gmail blocking external images
+        $logoPath = FCPATH . 'assets_users/images/logo.webp';
+        $logoHtml = '';
+        if (file_exists($logoPath)) {
+            $logoB64  = base64_encode(file_get_contents($logoPath));
+            $logoHtml = "<img src=\"data:image/webp;base64,{$logoB64}\" alt=\"NAMA Marine\" style=\"height:60px;max-width:200px;object-fit:contain;margin-bottom:8px;\" />";
+        } else {
+            $logoHtml = "<span style='font-size:20px;font-weight:800;color:#fff;'>⚓ NAMA Marine</span>";
+        }
+
         return <<<HTML
 <!DOCTYPE html>
 <html>
@@ -3700,7 +3710,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
 <body style="margin:0;padding:0;font-family:Arial,sans-serif;background:#f5f5f5;">
     <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:8px;overflow:hidden;">
         <div style="background:#F2881C;color:#fff;padding:24px 32px;text-align:center;">
-            <img src="https://namamarine.cloud/assets_users/images/logo.webp" alt="NAMA Marine" style="height:60px;max-width:200px;object-fit:contain;margin-bottom:8px;" /><br>
+            {$logoHtml}
             <p style="margin:4px 0 0;opacity:.85;font-size:14px;">Boarding Pass — Self Service</p>
         </div>
         <div style="padding:32px;">
