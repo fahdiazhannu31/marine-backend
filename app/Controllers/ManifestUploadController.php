@@ -3593,6 +3593,29 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             $emailSubject = "🎫 Boarding Pass QR Code - {$groupName}";
             $emailBody = $this->buildGroupQrEmailBody($groupInfo, $groupQrData, $upload);
 
+            // Generate QR PNG for attachment
+            $qrContent   = $groupQrData['qr_content'] ?? null;
+            $qrTempFile  = null;
+            if ($qrContent) {
+                try {
+                    $qrDir = WRITEPATH . 'uploads/qr_codes/';
+                    if (!is_dir($qrDir)) @mkdir($qrDir, 0775, true);
+                    $qrTempFile = $qrDir . 'email_qr_' . uniqid() . '.png';
+
+                    $writer = new \Endroid\QrCode\Writer\PngWriter();
+                    $qrCode = \Endroid\QrCode\QrCode::create($qrContent)
+                        ->setEncoding(new \Endroid\QrCode\Encoding\Encoding('UTF-8'))
+                        ->setSize(400)
+                        ->setMargin(12)
+                        ->setForegroundColor(new \Endroid\QrCode\Color\Color(0, 0, 0))
+                        ->setBackgroundColor(new \Endroid\QrCode\Color\Color(255, 255, 255));
+                    $writer->write($qrCode)->saveToFile($qrTempFile);
+                } catch (\Exception $e) {
+                    log_message('warning', "Failed to generate QR attachment for {$groupName}: " . $e->getMessage());
+                    $qrTempFile = null;
+                }
+            }
+
             $emailService->setTo($groupEmail);
             $emailService->setFrom(
                 $emailConfig->fromEmail ?: 'noreply@namamarine.cloud',
@@ -3601,6 +3624,14 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             $emailService->setSubject($emailSubject);
             $emailService->setMessage($emailBody);
             $emailService->setMailType('html');
+
+            // Attach QR PNG if generated
+            if ($qrTempFile && file_exists($qrTempFile)) {
+                $emailService->attach(
+                    $qrTempFile,
+                    'boarding-pass-qr-' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $groupName) . '.png'
+                );
+            }
 
             // Try to send
             try {
@@ -3615,6 +3646,11 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             } catch (\Exception $e) {
                 log_message('error', "Exception sending email to {$groupEmail}: " . $e->getMessage());
                 $failedGroups[] = $groupName;
+            }
+
+            // Cleanup temp QR file
+            if ($qrTempFile && file_exists($qrTempFile)) {
+                @unlink($qrTempFile);
             }
 
             $emailService->clear();
