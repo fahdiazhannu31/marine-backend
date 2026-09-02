@@ -3693,17 +3693,29 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             ? "<p style='font-size:12px;color:#888;word-break:break-all;margin-top:8px;'>Link: <a href=\"{$boardingPassUrl}\" style='color:#F2881C;'>{$boardingPassUrl}</a></p>"
             : '';
 
-        // Logo — embed as base64 inline to avoid Gmail blocking external images
+        // Logo — embed as base64 PNG inline (Gmail blocks webp & external URLs)
         $logoPath = FCPATH . 'assets_users/images/logo.webp';
-        // Fallback: try server absolute path if FCPATH doesn't work
         if (!file_exists($logoPath)) {
             $logoPath = '/var/www/marine-backend/public/assets_users/images/logo.webp';
         }
         $logoHtml = '';
-        if (file_exists($logoPath)) {
-            $logoB64  = base64_encode(file_get_contents($logoPath));
-            $logoHtml = "<img src=\"data:image/webp;base64,{$logoB64}\" alt=\"NAMA Marine\" style=\"height:60px;max-width:200px;object-fit:contain;margin-bottom:8px;\" />";
-        } else {
+        if (file_exists($logoPath) && function_exists('imagecreatefromwebp')) {
+            try {
+                // Convert webp → PNG in memory using GD
+                $img = @imagecreatefromwebp($logoPath);
+                if ($img) {
+                    ob_start();
+                    imagepng($img);
+                    $pngData = ob_get_clean();
+                    imagedestroy($img);
+                    $logoB64  = base64_encode($pngData);
+                    $logoHtml = "<img src=\"data:image/png;base64,{$logoB64}\" alt=\"NAMA Marine\" style=\"height:60px;max-width:200px;object-fit:contain;margin-bottom:8px;\" />";
+                }
+            } catch (\Exception $e) {
+                log_message('warning', 'Failed to convert logo: ' . $e->getMessage());
+            }
+        }
+        if (!$logoHtml) {
             $logoHtml = "<span style='font-size:20px;font-weight:800;color:#fff;'>NAMA Marine</span>";
         }
 
