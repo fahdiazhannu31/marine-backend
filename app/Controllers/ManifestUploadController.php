@@ -3694,7 +3694,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             : '';
 
         // Header text instead of logo
-        $logoHtml = "<span style='font-size:22px;font-weight:800;color:#fff;letter-spacing:-0.5px;'>⚓ NAMA Marine</span>";
+        $logoHtml = "<span style='font-size:22px;font-weight:800;color:#fff;letter-spacing:-0.5px;'>NAMA Marine</span>";
 
         return <<<HTML
 <!DOCTYPE html>
