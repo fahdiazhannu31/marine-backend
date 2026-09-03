@@ -931,13 +931,47 @@ class ManifestUploadController extends ApiController
             'qr_generation_status' => !empty($groupQrCodes) ? 'generated' : 'failed',
         ]);
 
-        // ── 11. Auto-assign captain to schedule ──────────────────────
-        $captainAssignResult = ['status' => 'skipped'];
+        // ── 11. Auto-assign crew to schedule ─────────────────────────
+        $crewAssignResults = [];
+
+        // Captain
         if ($captainName && $scheduleId) {
-            $captainAssignResult = $this->autoAssignCaptain(
-                $captainName, $scheduleId, $boatId, $tripDate, $direction
+            $crewAssignResults['captain'] = $this->autoAssignCrewByName(
+                $captainName, 'captain', $scheduleId, $boatId, $tripDate, $direction
             );
         }
+
+        // ABK / Crew — supports multiple names separated by comma or newline
+        if ($abkNamesRaw && $scheduleId) {
+            $abkList = array_filter(array_map('trim',
+                preg_split('/[,\n]+/', $abkNamesRaw)
+            ));
+            foreach ($abkList as $abkName) {
+                if ($abkName) {
+                    $crewAssignResults['abk'][] = $this->autoAssignCrewByName(
+                        $abkName, 'abk', $scheduleId, $boatId, $tripDate, $direction
+                    );
+                }
+            }
+        }
+
+        // GRO — supports multiple names separated by comma or newline
+        $groNameRaw = $headerMeta['gro_name'] ?? '';
+        if ($groNameRaw && $scheduleId) {
+            $groList = array_filter(array_map('trim',
+                preg_split('/[,\n]+/', $groNameRaw)
+            ));
+            foreach ($groList as $groName) {
+                if ($groName) {
+                    $crewAssignResults['gro'][] = $this->autoAssignCrewByName(
+                        $groName, 'gro', $scheduleId, $boatId, $tripDate, $direction
+                    );
+                }
+            }
+        }
+
+        // Backward compat
+        $captainAssignResult = $crewAssignResults['captain'] ?? ['status' => 'skipped'];
 
         return $this->jsonResponse([
             'message'         => 'Manifest uploaded and seats assigned successfully.',
@@ -956,6 +990,7 @@ class ManifestUploadController extends ApiController
             'gro_name'        => $headerMeta['gro_name'],
             'group_qr_codes'  => $groupQrCodes,
             'captain_assign'  => $captainAssignResult,
+            'crew_assign'     => $crewAssignResults,
         ], 201);
     }
 
@@ -1043,8 +1078,90 @@ class ManifestUploadController extends ApiController
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Helper: extract authenticated user_id from Bearer token
+    // Helper: auto-assign any crew role from manifest to schedule
+    // Supports captain, abk, gro, staff, other
+    // Multiple names per role supported (split by comma/newline upstream)
     // ─────────────────────────────────────────────────────────────
+    private function autoAssignCrewByName(
+        string $name,
+        string $role,
+        int    $scheduleId,
+        int    $boatId,
+        string $tripDate,
+        string $direction
+    ): array {
+        $db = \Config\Database::connect();
+
+        // 1. Exact match (case-insensitive)
+        $crew = $db->table('crew')
+            ->where('role', $role)
+            ->where('active', 1)
+            ->where('LOWER(name)', strtolower($name))
+            ->get()->getFirstRow('array');
+
+        // 2. Fuzzy match — any word from name (min 3 chars)
+        if (!$crew) {
+            $words = array_filter(explode(' ', $name), fn($w) => strlen($w) >= 3);
+            if (!empty($words)) {
+                $qb = $db->table('crew')->where('role', $role)->where('active', 1);
+                $qb->groupStart();
+                foreach ($words as $word) {
+                    $qb->orLike('name', $word, 'both');
+                }
+                $qb->groupEnd();
+                $crew = $qb->get()->getFirstRow('array');
+            }
+        }
+
+        // 3. Not found
+        if (!$crew) {
+            return [
+                'status'  => 'not_found',
+                'name'    => $name,
+                'role'    => $role,
+                'message' => ucfirst($role) . " \"{$name}\" tidak ditemukan di database crew.",
+            ];
+        }
+
+        // 4. Already assigned
+        $already = $db->table('crew_assignments')
+            ->where('crew_id', $crew['id'])
+            ->where('schedule_id', $scheduleId)
+            ->where('trip_date', $tripDate)
+            ->where('direction', $direction)
+            ->countAllResults();
+
+        if ($already) {
+            return [
+                'status'  => 'already_assigned',
+                'name'    => $crew['name'],
+                'role'    => $role,
+                'crew_id' => $crew['id'],
+                'message' => ucfirst($role) . " {$crew['name']} sudah di-assign ke schedule ini.",
+            ];
+        }
+
+        // 5. Insert assignment
+        $now = date('Y-m-d H:i:s');
+        $db->table('crew_assignments')->insert([
+            'crew_id'     => $crew['id'],
+            'schedule_id' => $scheduleId,
+            'boat_id'     => $boatId ?: null,
+            'trip_date'   => $tripDate,
+            'direction'   => $direction,
+            'notes'       => 'Auto-assigned from manifest upload',
+            'created_at'  => $now,
+            'updated_at'  => $now,
+        ]);
+
+        return [
+            'status'  => 'assigned',
+            'name'    => $crew['name'],
+            'role'    => $role,
+            'crew_id' => $crew['id'],
+            'message' => ucfirst($role) . " {$crew['name']} berhasil di-assign ke schedule.",
+        ];
+    }
     private function getAuthUserId(): int
     {
         $authHeader = $this->request->getHeaderLine('Authorization');
