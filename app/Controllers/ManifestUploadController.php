@@ -1113,14 +1113,29 @@ class ManifestUploadController extends ApiController
             }
         }
 
-        // 3. Not found
+        // 3. Not found — auto-create crew record
         if (!$crew) {
-            return [
-                'status'  => 'not_found',
-                'name'    => $name,
-                'role'    => $role,
-                'message' => ucfirst($role) . " \"{$name}\" tidak ditemukan di database crew.",
-            ];
+            $now = date('Y-m-d H:i:s');
+            // Generate unique QR code
+            do {
+                $qrCode = 'CREW_' . strtoupper(bin2hex(random_bytes(8)));
+            } while ($db->table('crew')->where('qr_code', $qrCode)->countAllResults() > 0);
+
+            $db->table('crew')->insert([
+                'name'       => $name,
+                'role'       => $role,
+                'phone'      => '',
+                'id_number'  => '',
+                'notes'      => 'Auto-created from manifest upload',
+                'qr_code'    => $qrCode,
+                'active'     => 1,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+            $newId = $db->insertID();
+            $crew  = $db->table('crew')->where('id', $newId)->get()->getFirstRow('array');
+
+            log_message('info', "Auto-created crew: {$name} ({$role}) QR: {$qrCode}");
         }
 
         // 4. Already assigned
@@ -1155,11 +1170,12 @@ class ManifestUploadController extends ApiController
         ]);
 
         return [
-            'status'  => 'assigned',
-            'name'    => $crew['name'],
-            'role'    => $role,
-            'crew_id' => $crew['id'],
-            'message' => ucfirst($role) . " {$crew['name']} berhasil di-assign ke schedule.",
+            'status'       => 'assigned',
+            'name'         => $crew['name'],
+            'role'         => $role,
+            'crew_id'      => $crew['id'],
+            'auto_created' => isset($newId),
+            'message'      => ucfirst($role) . " {$crew['name']} berhasil di-assign ke schedule." . (isset($newId) ? ' (data crew baru dibuat otomatis)' : ''),
         ];
     }
     private function getAuthUserId(): int
