@@ -3287,6 +3287,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         // 2. Old format: NAMA_MARINE_MANIFEST_* or ticket_code directly
 
         // Detect new URL-based QR format
+        $isGroupQr = false;
         if (str_contains($code, '/boarding-pass') && str_contains($code, 't=')) {
             // Extract token from URL query string
             $parsedUrl = parse_url($code);
@@ -3306,6 +3307,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
                         ->where('cancelled', 0)
                         ->orderBy('id', 'ASC')
                         ->get()->getFirstRow('array');
+                    $isGroupQr = true; // mark as group QR scan
                 }
             }
         }
@@ -3354,19 +3356,22 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             $isReturnDate = ($today === $returnDate);
         }
 
-        // Check if group already checked in TODAY
-        $groupCheckins = $db->table('manifest_group_checkins')
-            ->where('upload_id', $upload['id'])
-            ->where('group_name', $ticket['group_name'])
-            ->where('checked_in_at >=', $today . ' 00:00:00')
-            ->where('checked_in_at <=', $today . ' 23:59:59')
-            ->orderBy('checked_in_at', 'DESC')
-            ->get()
-            ->getResultArray();
+        // Check if group already checked in TODAY — only for group QR scans
+        $alreadyCheckedInToday = false;
+        $groupCheckins = [];
+        if ($isGroupQr) {
+            $groupCheckins = $db->table('manifest_group_checkins')
+                ->where('upload_id', $upload['id'])
+                ->where('group_name', $ticket['group_name'])
+                ->where('checked_in_at >=', $today . ' 00:00:00')
+                ->where('checked_in_at <=', $today . ' 23:59:59')
+                ->orderBy('checked_in_at', 'DESC')
+                ->get()
+                ->getResultArray();
+            $alreadyCheckedInToday = !empty($groupCheckins);
+        }
 
-        $alreadyCheckedInToday = !empty($groupCheckins);
-
-        // If checked in today and NOT return date, block re-scan
+        // If checked in today and NOT return date, block re-scan (group QR only)
         if ($alreadyCheckedInToday && !$isReturnDate) {
             return $this->jsonResponse([
                 'error' => 'Group sudah di-check-in hari ini. Silakan kembali besok untuk check-in pulang.',
@@ -3374,7 +3379,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
                 'group_name' => $ticket['group_name'],
                 'checked_in_at' => $groupCheckins[0]['checked_in_at'] ?? null,
                 'can_retry_tomorrow' => true,
-            ], 409); // 409 Conflict
+            ], 409);
         }
 
         // Get all tickets in the same group
@@ -3385,15 +3390,17 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             ->get()
             ->getResultArray();
 
-        // Auto check-in the group: record this scan in manifest_group_checkins
+        // Record group check-in — only for group QR scans (not individual BP scans)
         $now = date('Y-m-d H:i:s');
-        $db->table('manifest_group_checkins')->insert([
-            'upload_id'    => $upload['id'],
-            'group_name'   => $ticket['group_name'],
-            'checked_in_at' => $now,
-            'direction'    => $isReturnDate ? 'RETURN' : 'DEPARTURE',
-            'notes'        => 'Auto group check-in via QR scan',
-        ]);
+        if ($isGroupQr) {
+            $db->table('manifest_group_checkins')->insert([
+                'upload_id'     => $upload['id'],
+                'group_name'    => $ticket['group_name'],
+                'checked_in_at' => $now,
+                'direction'     => $isReturnDate ? 'RETURN' : 'DEPARTURE',
+                'notes'         => 'Auto group check-in via QR scan',
+            ]);
+        }
 
         return $this->jsonResponse([
             'type'              => 'passenger',
