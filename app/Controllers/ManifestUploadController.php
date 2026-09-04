@@ -3971,13 +3971,25 @@ HTML;
     public function publicGroupBoardingPassPdf()
     {
         $db       = \Config\Database::connect();
-        $token    = $this->request->getVar('t')    ?? '';
-        $ticketId = (int) ($this->request->getVar('ticket_id') ?? 0);
+        $token    = $this->request->getVar('t') ?? '';
+
+        // Support both single ticket_id and multiple ticket_ids (comma-separated)
+        $ticketIdsRaw = $this->request->getVar('ticket_ids') ?? '';
+        $ticketIdSingle = (int) ($this->request->getVar('ticket_id') ?? 0);
+
+        // Resolve ticket IDs
+        if ($ticketIdsRaw) {
+            $ticketIds = array_filter(array_map('intval', explode(',', $ticketIdsRaw)));
+        } elseif ($ticketIdSingle) {
+            $ticketIds = [$ticketIdSingle];
+        } else {
+            $ticketIds = [];
+        }
 
         // ── 1. Validate token ───────────────────────────────────────────
-        if (!$token || !$ticketId) {
+        if (!$token || empty($ticketIds)) {
             return $this->response->setStatusCode(400)
-                ->setJSON(['error' => 'Missing token or ticket_id.']);
+                ->setJSON(['error' => 'Missing token or ticket_id(s).']);
         }
 
         $b64     = strtr($token, '-_', '+/');
@@ -3991,27 +4003,23 @@ HTML;
         [$uploadId, $groupName] = explode('|', $decoded, 2);
         $uploadId = (int) $uploadId;
 
-        // ── 2. Verify ticket belongs to this group/upload ───────────────
-        $ticket = $db->table('manifest_tickets')
-            ->where('id', $ticketId)
+        // ── 2. Verify ALL tickets belong to this group/upload ───────────
+        $validTickets = $db->table('manifest_tickets')
+            ->whereIn('id', $ticketIds)
             ->where('upload_id', $uploadId)
             ->where('group_name', $groupName)
             ->where('cancelled', 0)
-            ->get()->getFirstRow('array');
+            ->get()->getResultArray();
 
-        if (!$ticket) {
+        if (empty($validTickets)) {
             return $this->response->setStatusCode(403)
-                ->setJSON(['error' => 'Ticket does not belong to this group.']);
+                ->setJSON(['error' => 'No valid tickets found for this group.']);
         }
 
-        // ── 3. Get upload + boat info ───────────────────────────────────
-        $upload = $db->table('manifest_uploads')
-            ->where('id', $uploadId)
-            ->get()->getFirstRow('array');
+        $validIds = array_column($validTickets, 'id');
 
-        // ── 4. Delegate ke boardingPass() dengan force ticket_ids ──────────
-        // Pass ticket ID directly via parameter — bypasses CI4 request caching
-        return $this->boardingPass($uploadId, [$ticketId]);
+        // ── 3. Delegate ke boardingPass() with all valid ticket IDs ─────
+        return $this->boardingPass($uploadId, $validIds);
     }
     public function boardingPassSelfService()
     {
