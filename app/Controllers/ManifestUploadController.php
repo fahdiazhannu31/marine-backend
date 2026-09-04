@@ -358,10 +358,11 @@ class ManifestUploadController extends ApiController
         $meta = [
             'origin'          => null,
             'destination'     => null,
+            'boat_name'       => null,   // parsed from KAPAL field
             'captain_name'    => null,
             'crew_names'      => null,
             'gro_name'        => null,
-            'trip_date'       => null,   // parsed from Excel header
+            'trip_date'       => null,
             'overnight_count' => 0,
             'daytrip_count'   => 0,
             'staff_count'     => 0,
@@ -380,6 +381,7 @@ class ManifestUploadController extends ApiController
         // Flatten every pre-header row into one big "key→value" scan.
         // We look for cells that match known labels and grab the next non-empty cell.
         $labelMap = [
+            'KAPAL'      => 'boat_name',
             'ASAL'       => 'origin',
             'TUJUAN'     => 'destination',
             'NAHKODA'    => 'captain_name',
@@ -693,6 +695,27 @@ class ManifestUploadController extends ApiController
             // Could not parse date from Excel — warn but allow upload
             log_message('warning', "Manifest upload — could not parse trip_date from Excel header. Skipping date validation.");
         }
+
+        // ── 5d. Validate Excel boat_name matches schedule boat ────────
+        $excelBoatName    = trim($headerMeta['boat_name'] ?? '');
+        $scheduleBoatName = trim($schedule['boat_name']   ?? '');
+
+        if ($excelBoatName && $scheduleBoatName) {
+            // Normalize: lowercase + alphanumeric only for fuzzy compare
+            $excelBoatNorm    = strtolower(preg_replace('/[^a-z0-9]/i', '', $excelBoatName));
+            $scheduleBoatNorm = strtolower(preg_replace('/[^a-z0-9]/i', '', $scheduleBoatName));
+
+            if ($excelBoatNorm !== $scheduleBoatNorm) {
+                @unlink($savedPath);
+                return $this->jsonResponse([
+                    'error'              => "Nama kapal di manifest Excel \"{$excelBoatName}\" tidak sesuai dengan kapal schedule \"{$scheduleBoatName}\". Pastikan manifest yang diupload sesuai dengan schedule.",
+                    'excel_boat_name'    => $excelBoatName,
+                    'schedule_boat_name' => $scheduleBoatName,
+                ], 422);
+            }
+        }
+
+        log_message('info', "Manifest upload — excel_boat: " . ($excelBoatName ?: 'NOT_PARSED') . ", schedule_boat: {$scheduleBoatName}");
 
         // Override captain / abk from form fields if they were explicitly provided,
         // otherwise fall back to what we found in the Excel header.
