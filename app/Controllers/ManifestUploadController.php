@@ -940,12 +940,91 @@ class ManifestUploadController extends ApiController
         }
 
         // ── 10. Generate group QR codes ──────────────────────────────
-        // Create unique QR per group for self-service boarding pass generation
+        // For RETURN manifests: try to reuse existing QR from DEPARTURE manifest
+        // If group members are identical → reuse QR (no new blast needed)
+        // If group is new or has different members → generate new QR
         $groupQrCodes = [];
-        try {
-            $groupQrCodes = $this->generateGroupQrCodes($uploadId, $ticketRows);
-        } catch (\Exception $e) {
-            log_message('error', "Failed to generate group QR codes: " . $e->getMessage());
+        $reuseInfo    = []; // tracks which groups reused QR vs got new ones
+
+        if ($direction === 'RETURN') {
+            // Find most recent DEPARTURE upload for same boat + overlapping trip period
+            $departureUploads = $db->table('manifest_uploads')
+                ->where('boat_id', $boatId)
+                ->where('direction', 'DEPARTURE')
+                ->where('status !=', 'DELETED')
+                ->orderBy('trip_date', 'DESC')
+                ->limit(5)
+                ->get()->getResultArray();
+
+            // Build group → members map from this RETURN upload
+            $returnGroupMembers = [];
+            foreach ($ticketRows as $t) {
+                $grp = $t['group_name'] ?? '__solo__';
+                $returnGroupMembers[$grp][] = strtolower(trim($t['passenger_name'] ?? ''));
+            }
+
+            // For each group in RETURN, check if matching group in any DEPARTURE upload
+            $departureQrs = [];
+            foreach ($departureUploads as $depUpload) {
+                if (empty($depUpload['group_qr_codes'])) continue;
+                $depQrs = json_decode($depUpload['group_qr_codes'], true) ?? [];
+                if (empty($depQrs)) continue;
+
+                // Get departure group members
+                $depTickets = $db->table('manifest_tickets')
+                    ->where('upload_id', $depUpload['id'])
+                    ->where('cancelled', 0)
+                    ->orderBy('group_name')->orderBy('seq_no')
+                    ->get()->getResultArray();
+
+                $depGroupMembers = [];
+                foreach ($depTickets as $t) {
+                    $grp = $t['group_name'] ?? '__solo__';
+                    $depGroupMembers[$grp][] = strtolower(trim($t['passenger_name'] ?? ''));
+                }
+
+                foreach ($returnGroupMembers as $grpName => $retMembers) {
+                    if (isset($departureQrs[$grpName])) continue; // already found
+                    if (!isset($depGroupMembers[$grpName])) continue; // group not in this departure
+
+                    $depMembers = $depGroupMembers[$grpName];
+                    sort($retMembers);
+                    sort($depMembers);
+
+                    if ($retMembers === $depMembers && isset($depQrs[$grpName])) {
+                        // Same members → reuse departure QR
+                        $departureQrs[$grpName] = $depQrs[$grpName];
+                        $reuseInfo[$grpName]     = 'reused_from_departure';
+                        log_message('info', "RETURN upload: reusing QR for group '{$grpName}' from departure upload {$depUpload['id']}");
+                    }
+                }
+            }
+
+            // Generate new QR only for groups that didn't match any departure group
+            $newGroupTickets = array_filter($ticketRows, function($t) use ($departureQrs) {
+                return !isset($departureQrs[$t['group_name'] ?? '__solo__']);
+            });
+
+            $newQrs = [];
+            if (!empty($newGroupTickets)) {
+                try {
+                    $newQrs = $this->generateGroupQrCodes($uploadId, array_values($newGroupTickets));
+                    foreach ($newQrs as $grp => $_) {
+                        $reuseInfo[$grp] = 'new_qr_generated';
+                    }
+                } catch (\Exception $e) {
+                    log_message('error', "Failed to generate new group QR codes for RETURN: " . $e->getMessage());
+                }
+            }
+
+            $groupQrCodes = array_merge($departureQrs, $newQrs);
+        } else {
+            // DEPARTURE: always generate fresh QR
+            try {
+                $groupQrCodes = $this->generateGroupQrCodes($uploadId, $ticketRows);
+            } catch (\Exception $e) {
+                log_message('error', "Failed to generate group QR codes: " . $e->getMessage());
+            }
         }
 
         // Update manifest_uploads with generated QR codes
@@ -996,6 +1075,10 @@ class ManifestUploadController extends ApiController
         // Backward compat
         $captainAssignResult = $crewAssignResults['captain'] ?? ['status' => 'skipped'];
 
+        // Count reused vs new QR codes for RETURN manifests
+        $reuseCount = count(array_filter($reuseInfo ?? [], fn($v) => $v === 'reused_from_departure'));
+        $newQrCount  = count(array_filter($reuseInfo ?? [], fn($v) => $v === 'new_qr_generated'));
+
         return $this->jsonResponse([
             'message'         => 'Manifest uploaded and seats assigned successfully.',
             'upload_id'       => $uploadId,
@@ -1012,6 +1095,9 @@ class ManifestUploadController extends ApiController
             'crew_names'      => $abkNamesRaw ?: null,
             'gro_name'        => $headerMeta['gro_name'],
             'group_qr_codes'  => $groupQrCodes,
+            'qr_reuse_info'   => $reuseInfo ?? [],
+            'qr_reused_count' => $reuseCount,
+            'qr_new_count'    => $newQrCount,
             'captain_assign'  => $captainAssignResult,
             'crew_assign'     => $crewAssignResults,
         ], 201);
