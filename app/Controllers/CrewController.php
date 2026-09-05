@@ -124,7 +124,7 @@ class CrewController extends ApiController
 
         if ($name === '') return $this->jsonResponse(['error' => 'name is required.'], 422);
 
-        $validRoles = ['captain', 'abk', 'gro', 'staff', 'other'];
+        $validRoles = ['captain', 'abk', 'gro', 'kkm', 'fl', 'staff', 'other'];
         if (!in_array($role, $validRoles, true)) {
             return $this->jsonResponse(['error' => 'Invalid role.'], 422);
         }
