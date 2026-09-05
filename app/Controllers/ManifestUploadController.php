@@ -3437,14 +3437,33 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         }
 
         $today = date('Y-m-d');
+        $nowTime = date('Y-m-d H:i:s');
         $tripDate = substr($upload['trip_date'], 0, 10);
-        
-        // Determine if this is a return trip (next day for overnight)
+        $ket = strtoupper($ticket['ket'] ?? '');
+
+        // Determine if this is a return trip
         $isReturnDate = false;
-        if (str_contains(strtoupper($ticket['ket'] ?? ''), 'OVERNIGHT')) {
-            // For overnight, calculate return date (next day)
-            $returnDate = date('Y-m-d', strtotime($tripDate . ' +1 day'));
+
+        // OVERNIGHT: return = next day
+        if (str_contains($ket, 'OVERNIGHT')) {
+            $returnDate  = date('Y-m-d', strtotime($tripDate . ' +1 day'));
             $isReturnDate = ($today === $returnDate);
+        }
+
+        // DAY TRIP: return = same day but after return schedule time
+        $returnScheduleTime = null;
+        if (str_contains($ket, 'DAY TRIP') || str_contains($ket, 'DAYTRIP')) {
+            // Find RETURN schedule for same boat + same day
+            $returnSchedule = $db->table('schedule')
+                ->where('boat_id', $upload['boat_id'])
+                ->where('type', 'RETURN')
+                ->where('DATE(date)', $today)
+                ->orderBy('date', 'ASC')
+                ->get()->getFirstRow('array');
+
+            if ($returnSchedule) {
+                $returnScheduleTime = $returnSchedule['date']; // e.g. 2026-09-04 14:00:00
+            }
         }
 
         // Check if group already checked in TODAY — only for group QR scans
@@ -3457,19 +3476,60 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
                 ->where('checked_in_at >=', $today . ' 00:00:00')
                 ->where('checked_in_at <=', $today . ' 23:59:59')
                 ->orderBy('checked_in_at', 'DESC')
-                ->get()
-                ->getResultArray();
+                ->get()->getResultArray();
             $alreadyCheckedInToday = !empty($groupCheckins);
+
+            // Check if already did RETURN check-in today
+            $alreadyReturnToday = !empty(array_filter($groupCheckins, fn($c) => $c['direction'] === 'RETURN'));
         }
 
-        // If checked in today and NOT return date, block re-scan (group QR only)
-        if ($alreadyCheckedInToday && !$isReturnDate) {
+        // DAY TRIP: check if this is a return scan (already checked in departure + after return time)
+        $isDayTripReturn = false;
+        if ($isGroupQr && $alreadyCheckedInToday && !$alreadyReturnToday) {
+            $departureDone = !empty(array_filter($groupCheckins, fn($c) => $c['direction'] === 'DEPARTURE'));
+            if ($departureDone && $returnScheduleTime) {
+                if ($nowTime >= $returnScheduleTime) {
+                    // After return schedule time → allow as return scan
+                    $isDayTripReturn = true;
+                    $isReturnDate    = true;
+                } else {
+                    // Before return schedule time → block with message
+                    $returnHour = date('H:i', strtotime($returnScheduleTime));
+                    return $this->jsonResponse([
+                        'error'               => "Belum waktunya check-in pulang. Jadwal return hari ini jam {$returnHour}.",
+                        'type'                => 'too_early_for_return',
+                        'group_name'          => $ticket['group_name'],
+                        'return_schedule_time' => $returnScheduleTime,
+                        'return_hour'         => $returnHour,
+                    ], 409);
+                }
+            }
+        }
+
+        // If checked in today (departure done) and:
+        // - Not day trip return time → block
+        // - Not overnight return date → block
+        if ($alreadyCheckedInToday && !$isReturnDate && !$isDayTripReturn) {
+            $msg = $returnScheduleTime
+                ? 'Group sudah di-check-in hari ini. Check-in pulang tersedia setelah jam ' . date('H:i', strtotime($returnScheduleTime)) . '.'
+                : 'Group sudah di-check-in hari ini. Silakan kembali besok untuk check-in pulang.';
             return $this->jsonResponse([
-                'error' => 'Group sudah di-check-in hari ini. Silakan kembali besok untuk check-in pulang.',
-                'type' => 'already_checked_in',
-                'group_name' => $ticket['group_name'],
+                'error'              => $msg,
+                'type'               => 'already_checked_in',
+                'group_name'         => $ticket['group_name'],
+                'checked_in_at'      => $groupCheckins[0]['checked_in_at'] ?? null,
+                'return_schedule_time' => $returnScheduleTime,
+                'can_retry_tomorrow' => !$returnScheduleTime,
+            ], 409);
+        }
+
+        // Already done RETURN check-in today → fully blocked
+        if ($alreadyReturnToday ?? false) {
+            return $this->jsonResponse([
+                'error'         => 'Group sudah selesai check-in pulang hari ini.',
+                'type'          => 'already_checked_in_return',
+                'group_name'    => $ticket['group_name'],
                 'checked_in_at' => $groupCheckins[0]['checked_in_at'] ?? null,
-                'can_retry_tomorrow' => true,
             ], 409);
         }
 
