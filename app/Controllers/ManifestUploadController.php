@@ -1484,6 +1484,11 @@ class ManifestUploadController extends ApiController
         $origin      = $upload['origin']       ?? '';
         $destination = $upload['destination']  ?? '';
 
+        // For RETURN direction, swap origin ↔ destination on boarding pass
+        if ($direction === 'RETURN') {
+            [$origin, $destination] = [$destination, $origin];
+        }
+
         // ── Boat brand color ─────
         $boatColors = [
             'la luna'   => [24, 0, 173],
@@ -3979,8 +3984,10 @@ HTML;
             'group_name'   => $groupName,
             'boat_name'    => $upload['boat_label'] ?? $upload['boat_name'],
             'trip_date'    => $upload['trip_date'],
-            'origin'       => $upload['origin'],
-            'destination'  => $upload['destination'],
+            'direction'    => $upload['direction'] ?? 'DEPARTURE',
+            // Swap origin/destination for RETURN manifests
+            'origin'       => ($upload['direction'] === 'RETURN') ? ($upload['destination'] ?? '') : ($upload['origin'] ?? ''),
+            'destination'  => ($upload['direction'] === 'RETURN') ? ($upload['origin'] ?? '') : ($upload['destination'] ?? ''),
             'captain_name' => $upload['captain_name'],
             'tickets'      => $ticketList,
             'total'        => count($ticketList),
