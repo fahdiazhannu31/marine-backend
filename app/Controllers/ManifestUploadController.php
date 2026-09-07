@@ -1952,12 +1952,12 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
     | (If you actually need 3-inch/80mm stock, change PAGE_W below to 80
     | and shrink the field widths proportionally — just ask and I'll do it.)
     */
-    // A7 landscape: 105 x 74 mm
-    $pageW = 105;
-    $pageH = 74;
+    // 74mm x 210mm portrait (1/3 A4 — boarding pass strip)
+    $pageW = 74;
+    $pageH = 210;
 
     $pdf = new \App\Libraries\BoardingPassPDF(
-        'L',
+        'P',
         'mm',
         [$pageW, $pageH]
     );
@@ -2126,8 +2126,8 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
 
         $cardX = $marginX;
         $cardY = $marginY;
-        $cardW = $pageW - ($marginX * 2); // 99mm
-        $cardH = $pageH - ($marginY * 2); // 68mm
+        $cardW = $pageW - ($marginX * 2); // 68mm
+        $cardH = $pageH - ($marginY * 2); // 204mm
 
         // Outer border
         $pdf->SetDrawColor(...$borderGray);
@@ -2135,100 +2135,97 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         $pdf->Rect($cardX, $cardY, $cardW, $cardH);
 
         // ── Header bar ───────────────────────────────────────
-        $headerH = 11;
-
+        $headerH = 14;
         $pdf->SetFillColor(...$headerColor);
         $pdf->Rect($cardX, $cardY, $cardW, $headerH, 'F');
 
-        $pdf->YachtIconAuto($cardX + 2.5, $cardY + 1.5, 8, 7);
-
+        // Yacht icon + "Boarding Pass" title
+        $pdf->YachtIconAuto($cardX + 2, $cardY + 2.5, 8, 8);
         $pdf->SetTextColor(255, 255, 255);
-        $pdf->SetFont('Arial', 'B', 10);
+        $pdf->SetFont('Arial', 'B', 11);
         $pdf->SetXY($cardX + 12, $cardY + 2.5);
-        $pdf->Cell(50, 5.5, 'Boarding Pass', 0, 0, 'L');
-
-        // Boat name in header (right of title)
-        $pdf->SetFont('Arial', 'B', 8);
-        $pdf->SetXY($cardX + 60, $cardY + 2);
-        $pdf->Cell($cardW - 62, 4, strtoupper($boatName), 0, 0, 'C');
-
-        if ($ket) {
-            $pdf->SetFont('Arial', 'B', 6.5);
-            $pdf->SetXY($cardX + 60, $cardY + 6.5);
-            $pdf->Cell($cardW - 62, 3.5, $ket, 0, 0, 'C');
-        }
-
+        $pdf->Cell($cardW - 14, 6, 'Boarding Pass', 0, 1, 'L');
+        $pdf->SetFont('Arial', 'B', 7.5);
+        $pdf->SetXY($cardX + 12, $cardY + 8.5);
+        $pdf->Cell($cardW - 14, 4, strtoupper($boatName) . ($ket ? '  ·  ' . $ket : ''), 0, 0, 'L');
         $pdf->SetTextColor(0, 0, 0);
 
-        $bodyTop  = $cardY + $headerH + 2;
-
-        // ── A7 landscape: LEFT column (info) | RIGHT column (QR) ─────
-        $qrSize   = 28;
-        $qrX      = $cardX + $cardW - $qrSize - 2;
-        $qrY      = $cardY + $headerH + 2;
-
-        // QR code first (right side)
-        if ($qrFilePath && file_exists($qrFilePath)) {
-            $pdf->Image($qrFilePath, $qrX, $qrY, $qrSize, $qrSize, 'PNG');
-
-            $pdf->SetFont('Arial', 'B', 5.5);
-            $pdf->SetTextColor(...$labelGray);
-            $pdf->SetXY($qrX, $qrY + $qrSize + 0.5);
-            $pdf->Cell($qrSize, 3, 'SCAN TO CHECK-IN', 0, 0, 'C');
-            $pdf->SetTextColor(0, 0, 0);
-        }
-
-        // ── Dotted divider between info & QR ─────────────────
-        $divX = $qrX - 3;
-        $pdf->SetFillColor(...$borderGray);
-        $pdf->DottedLine($divX, $bodyTop, $divX, $cardY + $cardH - 3, 0.3, 1.4);
-
-        // ── Left info column ──────────────────────────────────
+        // ── Info fields (stacked vertically) ─────────────────
         $contentX = $cardX + 3;
-        $infoW    = $divX - $contentX - 3;
-        $halfW    = ($infoW - 3) / 2;
+        $fullW    = $cardW - 6;
+        $halfW    = ($fullW - 3) / 2;
         $col2X    = $contentX + $halfW + 3;
 
-        $y = $bodyTop;
+        $y = $cardY + $headerH + 3;
 
         // GROUP
-        $h = $fieldStacked($contentX, $y, $infoW, 'Group', $groupName, [26,26,26], 5.5, 8.5);
-        $y += max(8, $h + 1);
+        $h = $fieldStacked($contentX, $y, $fullW, 'Grup', $groupName, [26,26,26], 5.5, 9.0);
+        $y += max(10, $h + 2);
 
-        // NAME
-        $h = $fieldStacked($contentX, $y, $infoW, 'Passenger', $passengerName, [26,26,26], 5.5, 8.0);
-        $y += max(8, $h + 1);
+        // PASSENGER NAME
+        $h = $fieldStacked($contentX, $y, $fullW, 'Penumpang', $passengerName, [26,26,26], 5.5, 9.0);
+        $y += max(10, $h + 2);
 
-        // DATE | BOARDING
-        $h1 = $fieldStacked($contentX, $y, $halfW, 'Date', $formattedDate, [26,26,26], 5.5, 7.5);
-        $h2 = $fieldStacked($col2X,    $y, $halfW, 'Boarding', $boardingTime, [26,26,26], 5.5, 7.5);
-        $y += max(8, max($h1, $h2) + 1);
+        // Horizontal divider
+        $pdf->SetDrawColor(...$borderGray);
+        $pdf->SetLineWidth(0.3);
+        $pdf->Line($contentX, $y, $contentX + $fullW, $y);
+        $y += 3;
 
-        // FROM | TO / DIRECTION
+        // DATE | BOARDING TIME (2 col)
         $direction   = ($upload['direction'] === 'RETURN') ? 'Return' : 'Departure';
         $origin      = $upload['origin'] ?: 'Baywalk';
         $destination = $upload['destination'] ?: 'N/A';
 
-        $h1 = $fieldStacked($contentX, $y, $halfW, 'From', $origin, [26,26,26], 5.5, 7.5);
-        $h2 = ($destination !== 'N/A')
-            ? $fieldStacked($col2X, $y, $halfW, 'To', $destination, [26,26,26], 5.5, 7.5)
-            : $fieldStacked($col2X, $y, $halfW, 'Direction', $direction, [26,26,26], 5.5, 7.5);
-        $y += max(8, max($h1, $h2) + 1);
+        $h1 = $fieldStacked($contentX, $y, $halfW, 'Tanggal', $formattedDate, [26,26,26], 5.5, 8.0);
+        $h2 = $fieldStacked($col2X,    $y, $halfW, 'Keberangkatan', $boardingTime, [26,26,26], 5.5, 8.0);
+        $y += max(10, max($h1, $h2) + 2);
 
-        // SEAT | TICKET CODE
-        $fieldStacked($contentX, $y, $halfW, 'Seat No.', $seatNumber, $headerColor, 5.5, 9.0);
-        $fieldStacked($col2X,    $y, $halfW, 'Ticket', $ticketCode, [26,26,26], 5.5, 6.5);
+        // FROM → TO (2 col)
+        $h1 = $fieldStacked($contentX, $y, $halfW, 'Dari', $origin, [26,26,26], 5.5, 8.0);
+        $h2 = $fieldStacked($col2X,    $y, $halfW, 'Tujuan', $destination !== 'N/A' ? $destination : $direction, [26,26,26], 5.5, 8.0);
+        $y += max(10, max($h1, $h2) + 2);
 
-        // ── Captain footer ─────────────────────────────────────
-        if ($captainName) {
-            $pdf->SetFont('Arial', '', 5.5);
-            $pdf->SetTextColor(150, 155, 160);
-            $pdf->SetXY($cardX, $cardY + $cardH - 4);
-            $pdf->Cell($cardW, 3, 'Capt. ' . $captainName, 0, 0, 'C');
+        // SEAT (large) | TICKET CODE (2 col)
+        $h1 = $fieldStacked($contentX, $y, $halfW, 'Kursi', $seatNumber, $headerColor, 5.5, 14.0);
+        $h2 = $fieldStacked($col2X,    $y, $halfW, 'Kode Tiket', $ticketCode, [26,26,26], 5.5, 8.0);
+        $y += max(18, max($h1, $h2) + 2);
+
+        // Horizontal divider before QR
+        $pdf->SetDrawColor(...$borderGray);
+        $pdf->Line($contentX, $y, $contentX + $fullW, $y);
+        $y += 3;
+
+        // ── QR Code centered ─────────────────────────────────
+        $qrSize = 50;
+        $qrX    = $cardX + ($cardW - $qrSize) / 2;
+        $qrY    = $y;
+
+        if ($qrFilePath && file_exists($qrFilePath)) {
+            $pdf->Image($qrFilePath, $qrX, $qrY, $qrSize, $qrSize, 'PNG');
+            $y = $qrY + $qrSize + 1;
+
+            $pdf->SetFont('Arial', 'B', 6);
+            $pdf->SetTextColor(...$labelGray);
+            $pdf->SetXY($cardX, $y);
+            $pdf->Cell($cardW, 3.5, 'SCAN UNTUK CHECK-IN', 0, 1, 'C');
+            $y += 4;
             $pdf->SetTextColor(0, 0, 0);
         }
 
-    }
+        // ── Captain footer ─────────────────────────────────────
+        if ($captainName) {
+            // Place at bottom of card
+            $footerY = $cardY + $cardH - 5;
+            $pdf->SetDrawColor(...$borderGray);
+            $pdf->SetLineWidth(0.2);
+            $pdf->Line($contentX, $footerY - 1, $contentX + $fullW, $footerY - 1);
+            $pdf->SetFont('Arial', '', 6);
+            $pdf->SetTextColor(150, 155, 160);
+            $pdf->SetXY($cardX, $footerY);
+            $pdf->Cell($cardW, 3.5, 'Nahkoda: ' . $captainName, 0, 0, 'C');
+            $pdf->SetTextColor(0, 0, 0);
+        }
 
     // ── Clean up temporary QR files ──────────────────────────
     foreach ($qrFiles as $f) {
