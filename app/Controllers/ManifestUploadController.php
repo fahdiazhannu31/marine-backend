@@ -2240,7 +2240,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         'boarding-pass-manifest-' . $uploadId . '.pdf'
     );
     }
-
+}
     // ═══════════════════════════════════════════
     // TICKET EDIT ENDPOINTS
     // ═══════════════════════════════════════════
@@ -2258,6 +2258,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
      *   notes: string (optional)
      * }
      */
+    
     public function updateTicket(int $ticketId)
     {
         if (!$this->isAdminUser()) {
