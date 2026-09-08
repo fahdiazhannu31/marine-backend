@@ -2182,7 +2182,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         $pdf->SetFont('Arial', 'B', 7);
         $pdf->SetTextColor(...$headerColor);
         $pdf->SetXY($infoX, $cardY + 2);
-        $pdf->Cell($infoW, 4, strtoupper($boatName) . ($ket ? '  ·  ' . $ket : ''), 0, 0, 'R');
+        $pdf->Cell($infoW, 4, strtoupper($boatName) . ($ket ? '  -  ' . $ket : ''), 0, 0, 'R');
         $pdf->SetTextColor(0, 0, 0);
 
         $y = $cardY + 7;
