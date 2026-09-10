@@ -166,6 +166,7 @@ $routes->get('/api/admin/manifest/boats',                            'ManifestUp
 $routes->put('/api/admin/manifest/boats/(:num)/crew',                'ManifestUploadController::updateBoatCrew/$1');
 $routes->put('/api/admin/manifest/tickets/(:num)',                   'ManifestUploadController::updateTicket/$1');
 $routes->post('/api/admin/manifest/tickets/(:num)/toggle-cancel',    'ManifestUploadController::toggleCancel/$1');
+$routes->delete('/api/admin/manifest/tickets/(:num)',                'ManifestUploadController::deleteTicket/$1');
 $routes->get('/api/admin/manifest/available-seats/(:num)',           'ManifestUploadController::getAvailableSeats/$1');
 $routes->get('/api/admin/manifest/group-by-code/(:any)',             'ManifestUploadController::getGroupByCode/$1');
 

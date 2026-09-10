@@ -2497,6 +2497,39 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         ]);
     }
 
+    // ═══════════════════════════════════════════
+    // ENDPOINT: DELETE /api/admin/manifest/tickets/{ticketId}
+    // Permanently delete a ticket and release its seat
+    // ═══════════════════════════════════════════
+    public function deleteTicket(int $ticketId)
+    {
+        if (!$this->isAdminUser()) {
+            return $this->jsonResponse(['error' => 'Forbidden.'], 403);
+        }
+
+        $db = \Config\Database::connect();
+        $ticket = $db->table('manifest_tickets')->where('id', $ticketId)->get()->getFirstRow('array');
+
+        if (!$ticket) {
+            return $this->jsonResponse(['error' => 'Ticket not found.'], 404);
+        }
+
+        // Release seat if assigned
+        if (!empty($ticket['seat_id'])) {
+            $db->table('seat')
+                ->where('id', $ticket['seat_id'])
+                ->where('status', 'booked')
+                ->update(['status' => 'available']);
+        }
+
+        $db->table('manifest_tickets')->where('id', $ticketId)->delete();
+
+        return $this->jsonResponse([
+            'message'   => 'Ticket deleted.',
+            'ticket_id' => $ticketId,
+        ]);
+    }
+
     /**
      * POST /api/admin/manifest/uploads/{uploadId}/force-assign-seats
      * Force seat assignment for an upload that has 0 seats assigned
