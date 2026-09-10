@@ -1934,10 +1934,8 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         ->getFirstRow('array');
 
     if ($schedule && !empty($schedule['date'])) {
-        // Convert to WIB (UTC+7) for display on boarding pass
-        $dt = new \DateTime($schedule['date'], new \DateTimeZone('UTC'));
-        $dt->setTimezone(new \DateTimeZone('Asia/Jakarta'));
-        $boardingTime = $dt->format('H:i') . ' WIB';
+        // Database already stores in WIB/local time (Asia/Jakarta)
+        $boardingTime = date('H:i', strtotime($schedule['date'])) . ' WIB';
     }
 
     // ── QR directory ─────────────────────────────────────────
