@@ -1416,9 +1416,11 @@ class ManifestUploadController extends ApiController
                 ->update();
         }
         
-        // Now delete tickets and baggage
+        // Now delete tickets, baggage, crew assignments, and group checkins
         $db->table('manifest_tickets')->where('upload_id', $id)->delete();
         $db->table('manifest_baggage')->where('upload_id', $id)->delete();
+        $db->table('crew_assignments')->where('schedule_id', $upload['schedule_id'])->delete();
+        $db->table('manifest_group_checkins')->where('upload_id', $id)->delete();
         $model->delete($id);
 
         // Best-effort: remove the xlsx file
@@ -1889,8 +1891,17 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         ?? $upload['boat_name']
         ?? 'NAMA KAPAL';
 
-    $captainName = $upload['captain_name']
-        ?: ($boat['captain_name'] ?? '');
+    // Get captain name from crew assignments (role='CAPTAIN') for this schedule
+    $captain = $db->table('crew_assignments ca')
+        ->select('c.name')
+        ->join('crew c', 'c.id = ca.crew_id', 'left')
+        ->where('ca.schedule_id', $upload['schedule_id'])
+        ->where('c.role', 'CAPTAIN')
+        ->where('c.active', 1)
+        ->get()
+        ->getFirstRow('array');
+
+    $captainName = $captain['name'] ?? $upload['captain_name'] ?? $boat['captain_name'] ?? '';
 
     // ── Load tickets ─────────────────────────────────────────
     $ticketIdsRaw = $this->request->getVar('ticket_ids');
