@@ -1458,7 +1458,12 @@ class ManifestUploadController extends ApiController
 
         // Re-generate group QR codes so new passenger gets a QR
         try {
-            $newGroupQrs = $this->generateGroupQrCodes($uploadId);
+            $allTickets = $db->table('manifest_tickets')
+                ->where('upload_id', $uploadId)
+                ->where('cancelled', 0)
+                ->orderBy('seq_no', 'ASC')
+                ->get()->getResultArray();
+            $newGroupQrs = $this->generateGroupQrCodes($uploadId, $allTickets);
             if (!empty($newGroupQrs)) {
                 $db->table('manifest_uploads')->where('id', $uploadId)->update([
                     'group_qr_codes'       => json_encode($newGroupQrs),
