@@ -1410,6 +1410,7 @@ class ManifestUploadController extends ApiController
         $ticketCode = 'TKT-' . $uploadId . '-' . str_pad($nextSeq, 4, '0', STR_PAD_LEFT);
 
         // Auto-assign seat if not specified
+        $seatNumber = null;
         if (!$seatId) {
             $availableSeat = $db->table('seat')
                 ->where('boat_id', $upload['boat_id'])
@@ -1418,8 +1419,13 @@ class ManifestUploadController extends ApiController
                 ->get()->getFirstRow('array');
             
             if ($availableSeat) {
-                $seatId = $availableSeat['id'];
+                $seatId     = $availableSeat['id'];
+                $seatNumber = $availableSeat['seat_number'];
             }
+        } else {
+            // Get seat_number for the provided seat_id
+            $seat = $db->table('seat')->where('id', $seatId)->get()->getFirstRow('array');
+            $seatNumber = $seat['seat_number'] ?? null;
         }
 
         // Insert ticket
@@ -1431,6 +1437,7 @@ class ManifestUploadController extends ApiController
             'ticket_code'    => $ticketCode,
             'ket'            => $ket,
             'seat_id'        => $seatId,
+            'seat_number'    => $seatNumber,
             'email'          => $email ?: null,
             'notes'          => $notes,
             'age'            => $age ?: null,
@@ -1449,11 +1456,22 @@ class ManifestUploadController extends ApiController
             $db->table('seat')->where('id', $seatId)->update(['status' => 'booked']);
         }
 
+        // Re-generate group QR codes so new passenger gets a QR
+        try {
+            $newGroupQrs = $this->generateGroupQrCodes($uploadId);
+            if (!empty($newGroupQrs)) {
+                $db->table('manifest_uploads')->where('id', $uploadId)->update([
+                    'group_qr_codes'       => json_encode($newGroupQrs),
+                    'qr_generation_status' => 'generated',
+                ]);
+            }
+        } catch (\Exception $e) {
+            log_message('warning', 'Failed to regenerate group QR after manual add: ' . $e->getMessage());
+        }
+
         // Get inserted ticket with seat info
-        $ticket = $db->table('manifest_tickets mt')
-            ->select('mt.*, s.seat_number')
-            ->join('seat s', 's.id = mt.seat_id', 'left')
-            ->where('mt.id', $ticketId)
+        $ticket = $db->table('manifest_tickets')
+            ->where('id', $ticketId)
             ->get()->getFirstRow('array');
 
         return $this->jsonResponse([
