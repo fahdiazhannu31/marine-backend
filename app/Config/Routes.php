@@ -151,6 +151,7 @@ $routes->post('/api/admin/manifest/uploads/(:num)/force-assign',     'ManifestUp
 $routes->delete('/api/admin/manifest/uploads/(:num)',                'ManifestUploadController::deleteUpload/$1');
 $routes->get('/api/admin/manifest/delete-upload/(:num)',             'ManifestUploadController::deleteUpload/$1');
 $routes->get('/api/admin/manifest/tickets/(:num)',                   'ManifestUploadController::getTickets/$1');
+$routes->post('/api/admin/manifest/(:num)/tickets',                  'ManifestUploadController::addTicketManual/$1');
 $routes->get('/api/admin/manifest/baggage/(:num)',                   'ManifestUploadController::listBaggage/$1');
 $routes->post('/api/admin/manifest/baggage',                         'ManifestUploadController::addBaggage');
 $routes->put('/api/admin/manifest/baggage/(:num)',                   'ManifestUploadController::updateBaggage/$1');

@@ -1366,6 +1366,103 @@ class ManifestUploadController extends ApiController
     }
 
     // ═══════════════════════════════════════════
+    // ENDPOINT: POST /api/admin/manifest/{uploadId}/tickets
+    // Add passenger manually (walk-in, last minute, etc.)
+    // ═══════════════════════════════════════════
+    public function addTicketManual(int $uploadId)
+    {
+        if (!$this->isAdminUser()) {
+            return $this->jsonResponse(['error' => 'Forbidden.'], 403);
+        }
+
+        $db = \Config\Database::connect();
+        $upload = $db->table('manifest_uploads')->where('id', $uploadId)->get()->getFirstRow('array');
+        
+        if (!$upload) {
+            return $this->jsonResponse(['error' => 'Upload not found.'], 404);
+        }
+
+        $body = $this->request->getJSON(true) ?? [];
+        
+        $passengerName = trim($body['passenger_name'] ?? '');
+        $groupName     = trim($body['group_name'] ?? $passengerName);
+        $ket           = strtoupper(trim($body['ket'] ?? 'DAY TRIP'));
+        $seatId        = isset($body['seat_id']) ? (int)$body['seat_id'] : null;
+        $email         = trim($body['email'] ?? '');
+        $notes         = trim($body['notes'] ?? 'Manual add');
+        $age           = trim($body['age'] ?? '');
+        $gender        = trim($body['gender'] ?? '');
+        $domicile      = trim($body['domicile'] ?? '');
+        $idPassport    = trim($body['id_passport'] ?? '');
+
+        if (empty($passengerName)) {
+            return $this->jsonResponse(['error' => 'Passenger name required.'], 400);
+        }
+
+        // Get next seq_no
+        $maxSeq = $db->table('manifest_tickets')
+            ->where('upload_id', $uploadId)
+            ->selectMax('seq_no', 'max')
+            ->get()->getFirstRow('array');
+        $nextSeq = ((int)($maxSeq['max'] ?? 0)) + 1;
+
+        // Generate ticket_code
+        $ticketCode = 'TKT-' . $uploadId . '-' . str_pad($nextSeq, 4, '0', STR_PAD_LEFT);
+
+        // Auto-assign seat if not specified
+        if (!$seatId) {
+            $availableSeat = $db->table('seat')
+                ->where('boat_id', $upload['boat_id'])
+                ->where('status', 'available')
+                ->orderBy('seat_number', 'ASC')
+                ->get()->getFirstRow('array');
+            
+            if ($availableSeat) {
+                $seatId = $availableSeat['id'];
+            }
+        }
+
+        // Insert ticket
+        $ticketData = [
+            'upload_id'      => $uploadId,
+            'seq_no'         => $nextSeq,
+            'passenger_name' => $passengerName,
+            'group_name'     => $groupName,
+            'ticket_code'    => $ticketCode,
+            'ket'            => $ket,
+            'seat_id'        => $seatId,
+            'email'          => $email ?: null,
+            'notes'          => $notes,
+            'age'            => $age ?: null,
+            'gender'         => $gender ?: null,
+            'domicile'       => $domicile ?: null,
+            'id_passport'    => $idPassport ?: null,
+            'checked_in'     => 0,
+            'cancelled'      => 0,
+        ];
+
+        $db->table('manifest_tickets')->insert($ticketData);
+        $ticketId = $db->insertID();
+
+        // Mark seat as booked
+        if ($seatId) {
+            $db->table('seat')->where('id', $seatId)->update(['status' => 'booked']);
+        }
+
+        // Get inserted ticket with seat info
+        $ticket = $db->table('manifest_tickets mt')
+            ->select('mt.*, s.seat_number')
+            ->join('seat s', 's.id = mt.seat_id', 'left')
+            ->where('mt.id', $ticketId)
+            ->get()->getFirstRow('array');
+
+        return $this->jsonResponse([
+            'message' => 'Passenger added successfully.',
+            'ticket'  => $ticket,
+        ], 201);
+    }
+
+    // ═══════════════════════════════════════════
     // ENDPOINT: POST /api/admin/manifest/uploads/{id}/confirm
     // ═══════════════════════════════════════════
     public function confirmUpload(int $id)
