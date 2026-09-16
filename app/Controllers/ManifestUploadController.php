@@ -2600,7 +2600,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             'boarding-pass-template-' . $uploadId . '.pdf'
         );
     }
-}
+
     // ═══════════════════════════════════════════
     // TICKET EDIT ENDPOINTS
     // ═══════════════════════════════════════════
