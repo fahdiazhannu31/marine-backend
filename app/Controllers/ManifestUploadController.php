@@ -2353,13 +2353,13 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         $pdf->SetFont('Arial', 'B', 7.0);
         $pdf->SetTextColor(26, 26, 26);
 
-        // Manual text wrapping: max 25 chars per line
-        $maxCharsPerLine = 25;
+        // Manual text wrapping: max 18 chars per line to avoid QR overlap
+        $maxCharsPerLine = 18;
         $ticketLines = [];
         
         if (strlen($ticketCode) > $maxCharsPerLine) {
             // Try to break at space/dash if possible
-            $wrapped = wordwrap($ticketCode, $maxCharsPerLine, "\n", false);
+            $wrapped = wordwrap($ticketCode, $maxCharsPerLine, "\n", true);
             $ticketLines = explode("\n", $wrapped);
         } else {
             $ticketLines = [$ticketCode];
