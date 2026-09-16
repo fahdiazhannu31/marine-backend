@@ -2476,10 +2476,6 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
 
         $qrFiles = [];
 
-        // Path to template background image
-        $templatePath = FCPATH . 'assets/boarding_pass_template.jpg';
-        $useTemplate = file_exists($templatePath);
-
         foreach ($tickets as $ticket) {
 
             $passengerName = strtoupper($ticket['passenger_name'] ?: 'PASSENGER');
@@ -2513,12 +2509,10 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             // ── New page ────────────────────────────────────────
             $pdf->AddPage();
 
-            // Background template
-            if ($useTemplate) {
-                $pdf->Image($templatePath, 0, 0, $pageW, $pageH);
-            }
+            // NO background image - kertas template sudah pre-printed
+            // PDF ini hanya teks overlay transparan
 
-            // ── Text overlay (positions match your template) ────
+            // ── Text overlay (positions match physical template) ────
             $pdf->SetTextColor(0, 0, 0);
 
             // Group name
