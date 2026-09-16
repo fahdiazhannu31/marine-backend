@@ -1262,7 +1262,18 @@ class ApiController extends BaseController
                     SELECT SUM(mu.daytrip_count)
                     FROM manifest_uploads mu
                     WHERE mu.schedule_id = s.id
-                ), 0) as manifest_daytrip
+                ), 0) as manifest_daytrip,
+                -- Manifest upload ID and confirmed status (latest upload for this schedule)
+                (
+                    SELECT mu.id FROM manifest_uploads mu
+                    WHERE mu.schedule_id = s.id
+                    ORDER BY mu.id DESC LIMIT 1
+                ) as manifest_upload_id,
+                (
+                    SELECT mu.confirmed FROM manifest_uploads mu
+                    WHERE mu.schedule_id = s.id
+                    ORDER BY mu.id DESC LIMIT 1
+                ) as manifest_confirmed
             FROM schedule s
             LEFT JOIN boat b ON b.id = s.boat_id
             WHERE s.date >= CURDATE() AND s.date < DATE_ADD(CURDATE(), INTERVAL 14 DAY)
@@ -1272,17 +1283,6 @@ class ApiController extends BaseController
         $today            = date('Y-m-d');
         $tomorrow         = date('Y-m-d', strtotime('+1 day'));
         $capacityWarnings = [];
-        $todayTomorrow    = [];
-
-        foreach ($upcomingSchedules as $s) {
-            $capacity        = (int) ($s['capacity'] ?? 0);
-            $bookedPax       = (int) $s['booked_pax'];
-            $manifestPax     = (int) $s['manifest_pax'];
-            // Total pax = online bookings + manifest upload (non-overlapping sources)
-            $totalPax        = $bookedPax + $manifestPax;
-            $fillPct         = $capacity > 0 ? round(($totalPax / $capacity) * 100) : 0;
-            $scheduleDate    = substr($s['date'], 0, 10);
-
             $entry = [
                 'id'                  => (int) $s['id'],
                 'type'                => $s['type'],
@@ -1291,6 +1291,19 @@ class ApiController extends BaseController
                 'capacity'            => $capacity,
                 // Online booking stats
                 'booked_pax'          => $bookedPax,
+                'checked_in_pax'      => (int) $s['checked_in_pax'],
+                // Manifest upload stats
+                'manifest_pax'        => $manifestPax,
+                'manifest_checked_in' => (int) $s['manifest_checked_in'],
+                'manifest_overnight'  => (int) $s['manifest_overnight'],
+                'manifest_daytrip'    => (int) $s['manifest_daytrip'],
+                'manifest_upload_id'  => $s['manifest_upload_id'] ? (int) $s['manifest_upload_id'] : null,
+                'manifest_confirmed'  => (bool) ($s['manifest_confirmed'] ?? false),
+                // Combined
+                'total_pax'           => $totalPax,
+                'total_checked_in'    => (int) $s['checked_in_pax'] + (int) $s['manifest_checked_in'],
+                'fill_percent'        => $fillPct,
+            ];  'booked_pax'          => $bookedPax,
                 'checked_in_pax'      => (int) $s['checked_in_pax'],
                 // Manifest upload stats
                 'manifest_pax'        => $manifestPax,
