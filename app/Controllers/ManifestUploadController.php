@@ -2365,6 +2365,246 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         'boarding-pass-manifest-' . $uploadId . '.pdf'
     );
     }
+
+    // ═══════════════════════════════════════════
+    // BOARDING PASS WITH TEMPLATE (no colors, text-only overlay)
+    // ═══════════════════════════════════════════
+    
+    public function boardingPassTemplate(int $uploadId, array $forceTicketIds = [])
+    {
+        $db = \Config\Database::connect();
+
+        // ── Resolve upload meta ──────────────────────────────
+        $upload = $db->table('manifest_uploads')
+            ->where('id', $uploadId)
+            ->get()
+            ->getFirstRow('array');
+
+        if (!$upload) {
+            return $this->response->setStatusCode(404)
+                ->setJSON(['error' => 'Upload not found.']);
+        }
+
+        // ── Resolve boat + captain ───────────────────────────
+        $boat = $db->table('boat')
+            ->where('id', $upload['boat_id'])
+            ->get()
+            ->getFirstRow('array');
+
+        $boatName = $boat['boat_name']
+            ?? $upload['boat_name']
+            ?? 'NAMA KAPAL';
+
+        // Get captain name from crew assignments (role='CAPTAIN') for this schedule
+        $captain = $db->table('crew_assignments ca')
+            ->select('c.name')
+            ->join('crew c', 'c.id = ca.crew_id', 'left')
+            ->where('ca.schedule_id', $upload['schedule_id'])
+            ->where('c.role', 'CAPTAIN')
+            ->where('c.active', 1)
+            ->get()
+            ->getFirstRow('array');
+
+        $captainName = $captain['name'] ?? $upload['captain_name'] ?? $boat['captain_name'] ?? '';
+
+        // ── Load tickets ─────────────────────────────────────
+        $ticketIdsRaw = $this->request->getVar('ticket_ids');
+
+        $qb = $db->table('manifest_tickets')
+            ->where('upload_id', $uploadId)
+            ->where('cancelled', 0);
+
+        if (!empty($forceTicketIds)) {
+            $qb->whereIn('id', $forceTicketIds);
+        } elseif (!empty($ticketIdsRaw)) {
+            $ids = array_map('intval', array_filter(explode(',', $ticketIdsRaw)));
+            if (!empty($ids)) {
+                $qb->whereIn('id', $ids);
+            }
+        }
+
+        $tickets = $qb->orderBy('group_name', 'ASC')
+            ->orderBy('seq_no', 'ASC')
+            ->get()
+            ->getResultArray();
+
+        if (empty($tickets)) {
+            return $this->response->setStatusCode(404)
+                ->setJSON(['error' => 'No tickets found for this upload.']);
+        }
+
+        // ── Date / time from upload ──────────────────────────
+        $tripDate = $upload['trip_date'] ?? null;
+
+        $formattedDate = $tripDate
+            ? strtoupper(date('d F Y', strtotime($tripDate)))
+            : 'N/A';
+
+        $boardingTime = 'N/A';
+
+        $schedule = $db->table('schedule')
+            ->where('id', $upload['schedule_id'])
+            ->get()
+            ->getFirstRow('array');
+
+        if ($schedule && !empty($schedule['date'])) {
+            // Database already stores in WIB/local time (Asia/Jakarta)
+            $boardingTime = date('H:i', strtotime($schedule['date']));
+        }
+
+        $origin      = $upload['origin'] ?: 'BAYWALK';
+        $destination = $upload['destination'] ?: 'SEPA';
+
+        // ── Create PDF ───────────────────────────────────────
+        $qrDir = WRITEPATH . 'uploads/qr_codes/';
+        if (!is_dir($qrDir)) {
+            mkdir($qrDir, 0775, true);
+        }
+
+        // Template size matching your image
+        $pageW = 210;  // adjust to match template width
+        $pageH = 74;   // adjust to match template height
+
+        $pdf = new \App\Libraries\BoardingPassPDF(
+            'L',
+            'mm',
+            [$pageW, $pageH]
+        );
+
+        $pdf->SetAutoPageBreak(false);
+        $pdf->SetTitle('Boarding-Pass-Upload-' . $uploadId);
+
+        $qrFiles = [];
+
+        // Path to template background image
+        $templatePath = FCPATH . 'assets/boarding_pass_template.jpg';
+        $useTemplate = file_exists($templatePath);
+
+        foreach ($tickets as $ticket) {
+
+            $passengerName = strtoupper($ticket['passenger_name'] ?: 'PASSENGER');
+            $groupName     = strtoupper($ticket['group_name'] ?: $passengerName);
+            $seatNumber    = $ticket['seat_number'] ?: '-';
+            $ticketCode    = $ticket['ticket_code'] ?: ('TKT-' . $uploadId . '-' . $ticket['id']);
+            $ket           = strtoupper($ticket['ket'] ?? 'DAYTRIP');
+
+            // ── QR code ───────────────────────────────────────────
+            $qrContent = 'NAMA_MARINE_MANIFEST_' . $ticketCode;
+            $qrFilePath = $qrDir . uniqid('mp_') . '.png';
+
+            try {
+                $writer = new \Endroid\QrCode\Writer\PngWriter();
+
+                $qrCode = \Endroid\QrCode\QrCode::create($qrContent)
+                    ->setEncoding(new \Endroid\QrCode\Encoding\Encoding('UTF-8'))
+                    ->setSize(300)
+                    ->setMargin(8)
+                    ->setForegroundColor(new \Endroid\QrCode\Color\Color(0, 0, 0))
+                    ->setBackgroundColor(new \Endroid\QrCode\Color\Color(255, 255, 255));
+
+                $writer->write($qrCode)->saveToFile($qrFilePath);
+
+                $qrFiles[] = $qrFilePath;
+
+            } catch (\Exception $e) {
+                $qrFilePath = null;
+            }
+
+            // ── New page ────────────────────────────────────────
+            $pdf->AddPage();
+
+            // Background template
+            if ($useTemplate) {
+                $pdf->Image($templatePath, 0, 0, $pageW, $pageH);
+            }
+
+            // ── Text overlay (positions match your template) ────
+            $pdf->SetTextColor(0, 0, 0);
+
+            // Group name
+            $pdf->SetFont('Arial', 'B', 9);
+            $pdf->SetXY(22, 12);
+            $pdf->Cell(80, 5, $groupName, 0, 0, 'L');
+
+            // Passenger name
+            $pdf->SetFont('Arial', 'B', 9);
+            $pdf->SetXY(105, 12);
+            $pdf->Cell(80, 5, $passengerName, 0, 0, 'L');
+
+            // Date
+            $pdf->SetFont('Arial', '', 8);
+            $pdf->SetXY(22, 28);
+            $pdf->Cell(80, 5, $formattedDate, 0, 0, 'L');
+
+            // Time
+            $pdf->SetFont('Arial', '', 8);
+            $pdf->SetXY(105, 28);
+            $pdf->Cell(40, 5, $boardingTime, 0, 0, 'L');
+
+            // From
+            $pdf->SetFont('Arial', '', 8);
+            $pdf->SetXY(22, 44);
+            $pdf->Cell(80, 5, $origin, 0, 0, 'L');
+
+            // To
+            $pdf->SetFont('Arial', '', 8);
+            $pdf->SetXY(105, 44);
+            $pdf->Cell(40, 5, $destination, 0, 0, 'L');
+
+            // Boat
+            $pdf->SetFont('Arial', '', 8);
+            $pdf->SetXY(22, 60);
+            $pdf->Cell(80, 5, $boatName, 0, 0, 'L');
+
+            // Ticket code
+            $pdf->SetFont('Arial', '', 7);
+            $pdf->SetXY(105, 60);
+            $pdf->Cell(40, 5, $ticketCode, 0, 0, 'L');
+
+            // Seat
+            $pdf->SetFont('Arial', 'B', 10);
+            $pdf->SetXY(22, 76);
+            $pdf->Cell(20, 5, $seatNumber, 0, 0, 'L');
+
+            // Status
+            $pdf->SetFont('Arial', '', 8);
+            $pdf->SetXY(105, 76);
+            $pdf->Cell(40, 5, $ket, 0, 0, 'L');
+
+            // Captain footer
+            if ($captainName) {
+                $pdf->SetFont('Arial', '', 7);
+                $pdf->SetXY(22, 90);
+                $pdf->Cell(80, 4, 'Nahkoda: ' . $captainName, 0, 0, 'L');
+            }
+
+            // ── QR Code (right side) ─────────────────────────────
+            if ($qrFilePath && file_exists($qrFilePath)) {
+                $qrSize = 55;
+                $qrX    = 140;
+                $qrY    = 8;
+                $pdf->Image($qrFilePath, $qrX, $qrY, $qrSize, $qrSize, 'PNG');
+
+                $pdf->SetFont('Arial', '', 6);
+                $pdf->SetXY($qrX, $qrY + $qrSize + 1);
+                $pdf->Cell($qrSize, 3, 'SCAN CHECK-IN', 0, 0, 'C');
+            }
+
+        }
+
+        // ── Clean up temporary QR files ──────────────────────────
+        foreach ($qrFiles as $f) {
+            @unlink($f);
+        }
+
+        // ── Output PDF ───────────────────────────────────────────
+        $this->response->setContentType('application/pdf');
+
+        $pdf->Output(
+            'I',
+            'boarding-pass-template-' . $uploadId . '.pdf'
+        );
+    }
 }
     // ═══════════════════════════════════════════
     // TICKET EDIT ENDPOINTS
