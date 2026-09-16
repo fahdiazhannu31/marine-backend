@@ -431,19 +431,25 @@ class ManifestUploadController extends ApiController
                         $meta[$metaKey] = (int) $m[1];
                         break;
                     }
-                    // Case 2: cell is exactly the keyword, value in next non-empty cell
+                    // Case 2: cell is exactly the keyword, value in next non-empty cell (max 3 cells away)
                     if ($cell === $keyword) {
-                        for ($j = $i + 1; $j < $n; $j++) {
+                        $maxOffset = min($i + 4, $n); // limit search to prevent reading wrong column
+                        for ($j = $i + 1; $j < $maxOffset; $j++) {
                             $val = trim((string)($cells[$j] ?? ''));
-                            if ($val !== '' && is_numeric($val)) {
+                            if ($val === '') continue; // skip empty cells
+                            
+                            // Check if it's a number or "X PAX" format
+                            if (is_numeric($val)) {
                                 $meta[$metaKey] = (int) $val;
                                 break;
                             }
                             // also allow "137 PAX" style
-                            if (preg_match('/^(\d+)/', $val, $m2)) {
+                            if (preg_match('/^(\d+)\s*(PAX)?$/i', $val, $m2)) {
                                 $meta[$metaKey] = (int) $m2[1];
                                 break;
                             }
+                            // If next cell is not a number, assume count is 0 (empty section)
+                            break;
                         }
                         break;
                     }
