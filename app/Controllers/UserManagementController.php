@@ -29,17 +29,18 @@ class UserManagementController extends BaseController
             return false;
         }
 
-        $userModel = new UserModel();
-        $user = $userModel->find($tokenRow['user_id']);
+        $userId = $tokenRow['user_id'];
         
-        if (!$user) {
-            return false;
-        }
-
-        $userEntity = new \Myth\Auth\Entities\User((array)$user);
-        $roles = $userEntity->getRoles();
+        // Check if user has admin role directly from database
+        $db = \Config\Database::connect();
+        $role = $db->table('auth_groups_users agu')
+            ->select('ag.name')
+            ->join('auth_groups ag', 'ag.id = agu.group_id')
+            ->where('agu.user_id', $userId)
+            ->get()
+            ->getRow();
         
-        return in_array('admin', $roles);
+        return $role && $role->name === 'admin';
     }
 
     private function jsonResponse(array $data, int $status = 200)
