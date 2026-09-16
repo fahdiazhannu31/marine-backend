@@ -2351,6 +2351,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             $pdf->Cell($infoW, 3, 'Nahkoda: ' . $captainName, 0, 0, 'L');
             $pdf->SetTextColor(0, 0, 0);
         }
+    }
 
     // ── Clean up temporary QR files ──────────────────────────
     foreach ($qrFiles as $f) {
