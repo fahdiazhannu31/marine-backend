@@ -201,6 +201,17 @@ $routes->delete('/api/admin/crew/(:num)',                         'CrewControlle
 $routes->get('/api/admin/crew/(:num)/qr-pdf',                    'CrewController::qrPdf/$1');
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─── User Management (Admin Only) ────────────────────────────────────────────
+$routes->options('/api/admin/users/(:any)', 'UserManagementController::options');
+$routes->get('/api/admin/users',                                  'UserManagementController::index');
+$routes->post('/api/admin/users',                                 'UserManagementController::create');
+$routes->get('/api/admin/users/(:num)',                           'UserManagementController::show/$1');
+$routes->put('/api/admin/users/(:num)',                           'UserManagementController::update/$1');
+$routes->delete('/api/admin/users/(:num)',                        'UserManagementController::delete/$1');
+$routes->post('/api/admin/users/(:num)/unlock',                   'UserManagementController::unlock/$1');
+$routes->post('/api/admin/users/(:num)/reset-password',           'UserManagementController::resetPassword/$1');
+// ─────────────────────────────────────────────────────────────────────────────
+
 // Master data CRUD (boats, packages, schedules)
 $routes->get('/api/admin/boats', 'AdminCrudController::boats');
 $routes->post('/api/admin/boats', 'AdminCrudController::createBoat');
