@@ -2344,7 +2344,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         // SEAT (large accent) | TICKET CODE (with 2-line wrap if too long)
         $fieldStacked($infoX, $y, $halfW, 'Kursi', $seatNumber, $headerColor, 5.0, 11.0);
         
-        // TIKET — wrap to 2 lines if too long (manual MultiCell simulation)
+        // TIKET — wrap to 2 lines if too long (manual wrapping)
         $pdf->SetFont('Arial', '', 5.0);
         $pdf->SetTextColor(150, 155, 160);
         $pdf->SetXY($col2X, $y);
@@ -2353,14 +2353,25 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         $pdf->SetFont('Arial', 'B', 7.0);
         $pdf->SetTextColor(26, 26, 26);
 
-        // Check if ticket code fits in one line (30 chars rough threshold)
-        $ticketLines = $wrapText($ticketCode, $halfW);
-        $lineHeight = 7.0 * 0.5;
+        // Manual text wrapping: max 25 chars per line
+        $maxCharsPerLine = 25;
+        $ticketLines = [];
+        
+        if (strlen($ticketCode) > $maxCharsPerLine) {
+            // Try to break at space/dash if possible
+            $wrapped = wordwrap($ticketCode, $maxCharsPerLine, "\n", false);
+            $ticketLines = explode("\n", $wrapped);
+        } else {
+            $ticketLines = [$ticketCode];
+        }
+
+        $lineHeight = 3.5;
         $ticketY = $y + 3.3;
 
-        foreach (array_slice($ticketLines, 0, 2) as $line) { // max 2 lines
+        // Render max 2 lines
+        foreach (array_slice($ticketLines, 0, 2) as $line) {
             $pdf->SetXY($col2X, $ticketY);
-            $pdf->Cell($halfW, $lineHeight, $line, 0, 1, 'L');
+            $pdf->Cell($halfW, $lineHeight, trim($line), 0, 1, 'L');
             $ticketY += $lineHeight;
         }
         
