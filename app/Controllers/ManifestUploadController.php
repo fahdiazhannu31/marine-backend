@@ -2644,11 +2644,30 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             $pdf->SetXY(108, 58);
             $pdf->Cell(40, 3, 'TIKET', 0, 0, 'L');
             
-            // TIKET value
+            // TIKET value with text wrapping to prevent QR overlap
             $pdf->SetFont('Arial', '', 7);
             $pdf->SetTextColor(0, 0, 0);
-            $pdf->SetXY(108, 62);
-            $pdf->Cell(40, 4, $ticketCode, 0, 0, 'L');
+            
+            // Manual text wrapping: max 18 chars per line
+            $maxCharsPerLine = 18;
+            $ticketLines = [];
+            
+            if (strlen($ticketCode) > $maxCharsPerLine) {
+                $wrapped = wordwrap($ticketCode, $maxCharsPerLine, "\n", true);
+                $ticketLines = explode("\n", $wrapped);
+            } else {
+                $ticketLines = [$ticketCode];
+            }
+            
+            $lineHeight = 3.5;
+            $ticketY = 62;
+            
+            // Render max 2 lines
+            foreach (array_slice($ticketLines, 0, 2) as $line) {
+                $pdf->SetXY(108, $ticketY);
+                $pdf->Cell(40, $lineHeight, trim($line), 0, 0, 'L');
+                $ticketY += $lineHeight;
+            }
 
             // KURSI (label)
             $pdf->SetFont('Arial', '', 6);
