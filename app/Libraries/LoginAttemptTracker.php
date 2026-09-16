@@ -139,11 +139,11 @@ class LoginAttemptTracker
     
     private function getAttemptKey(string $email): string
     {
-        return 'login_attempts:' . md5(strtolower($email));
+        return 'login_attempts_' . md5(strtolower($email));
     }
     
     private function getLockKey(string $email): string
     {
-        return 'login_lock:' . md5(strtolower($email));
+        return 'login_lock_' . md5(strtolower($email));
     }
 }
