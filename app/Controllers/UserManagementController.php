@@ -50,6 +50,14 @@ class UserManagementController extends BaseController
     }
 
     // ═══════════════════════════════════════════
+    // OPTIONS - CORS Preflight
+    // ═══════════════════════════════════════════
+    public function options()
+    {
+        return $this->response->setStatusCode(200);
+    }
+
+    // ═══════════════════════════════════════════
     // GET /api/admin/users - List all users
     // ═══════════════════════════════════════════
     public function index()
