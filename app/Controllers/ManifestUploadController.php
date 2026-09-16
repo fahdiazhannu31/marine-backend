@@ -2522,71 +2522,71 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             // ── Text overlay (positions match physical template) ────
             $pdf->SetTextColor(0, 0, 0);
 
-            // Group name
-            $pdf->SetFont('Arial', 'B', 9);
-            $pdf->SetXY(22, 12);
-            $pdf->Cell(80, 5, $groupName, 0, 0, 'L');
+            // GRUP (kiri atas)
+            $pdf->SetFont('Arial', 'B', 8);
+            $pdf->SetXY(28, 14);
+            $pdf->Cell(70, 4, $groupName, 0, 0, 'L');
 
-            // Passenger name
-            $pdf->SetFont('Arial', 'B', 9);
-            $pdf->SetXY(105, 12);
-            $pdf->Cell(80, 5, $passengerName, 0, 0, 'L');
+            // PENUMPANG (kanan atas)
+            $pdf->SetFont('Arial', 'B', 8);
+            $pdf->SetXY(112, 14);
+            $pdf->Cell(70, 4, $passengerName, 0, 0, 'L');
 
-            // Date
-            $pdf->SetFont('Arial', '', 8);
-            $pdf->SetXY(22, 28);
-            $pdf->Cell(80, 5, $formattedDate, 0, 0, 'L');
-
-            // Time
-            $pdf->SetFont('Arial', '', 8);
-            $pdf->SetXY(105, 28);
-            $pdf->Cell(40, 5, $boardingTime, 0, 0, 'L');
-
-            // From
-            $pdf->SetFont('Arial', '', 8);
-            $pdf->SetXY(22, 44);
-            $pdf->Cell(80, 5, $origin, 0, 0, 'L');
-
-            // To
-            $pdf->SetFont('Arial', '', 8);
-            $pdf->SetXY(105, 44);
-            $pdf->Cell(40, 5, $destination, 0, 0, 'L');
-
-            // Boat
-            $pdf->SetFont('Arial', '', 8);
-            $pdf->SetXY(22, 60);
-            $pdf->Cell(80, 5, $boatName, 0, 0, 'L');
-
-            // Ticket code
+            // TANGGAL (kiri tengah)
             $pdf->SetFont('Arial', '', 7);
-            $pdf->SetXY(105, 60);
-            $pdf->Cell(40, 5, $ticketCode, 0, 0, 'L');
+            $pdf->SetXY(28, 30);
+            $pdf->Cell(70, 4, $formattedDate, 0, 0, 'L');
 
-            // Seat
-            $pdf->SetFont('Arial', 'B', 10);
-            $pdf->SetXY(22, 76);
+            // JAM (kanan tengah)
+            $pdf->SetFont('Arial', '', 7);
+            $pdf->SetXY(112, 30);
+            $pdf->Cell(40, 4, $boardingTime, 0, 0, 'L');
+
+            // DARI (kiri tengah-bawah)
+            $pdf->SetFont('Arial', '', 7);
+            $pdf->SetXY(28, 46);
+            $pdf->Cell(70, 4, $origin, 0, 0, 'L');
+
+            // TUJUAN (kanan tengah-bawah)
+            $pdf->SetFont('Arial', '', 7);
+            $pdf->SetXY(112, 46);
+            $pdf->Cell(40, 4, $destination, 0, 0, 'L');
+
+            // KAPAL (kiri bawah)
+            $pdf->SetFont('Arial', '', 7);
+            $pdf->SetXY(28, 62);
+            $pdf->Cell(70, 4, $boatName, 0, 0, 'L');
+
+            // TIKET (kanan bawah)
+            $pdf->SetFont('Arial', '', 6);
+            $pdf->SetXY(112, 62);
+            $pdf->Cell(40, 4, $ticketCode, 0, 0, 'L');
+
+            // KURSI (kiri bawah besar)
+            $pdf->SetFont('Arial', 'B', 12);
+            $pdf->SetXY(28, 78);
             $pdf->Cell(20, 5, $seatNumber, 0, 0, 'L');
 
-            // Status
-            $pdf->SetFont('Arial', '', 8);
-            $pdf->SetXY(105, 76);
-            $pdf->Cell(40, 5, $ket, 0, 0, 'L');
+            // STATUS (kanan bawah)
+            $pdf->SetFont('Arial', '', 7);
+            $pdf->SetXY(112, 78);
+            $pdf->Cell(40, 4, $ket, 0, 0, 'L');
 
-            // Captain footer
+            // Nahkoda (footer)
             if ($captainName) {
-                $pdf->SetFont('Arial', '', 7);
-                $pdf->SetXY(22, 90);
-                $pdf->Cell(80, 4, 'Nahkoda: ' . $captainName, 0, 0, 'L');
+                $pdf->SetFont('Arial', '', 6);
+                $pdf->SetXY(28, 95);
+                $pdf->Cell(70, 3, 'Nahkoda: ' . $captainName, 0, 0, 'L');
             }
 
-            // ── QR Code (right side) ─────────────────────────────
+            // ── QR Code (kanan, portrait besar) ─────────────────────────────
             if ($qrFilePath && file_exists($qrFilePath)) {
-                $qrSize = 55;
-                $qrX    = 140;
-                $qrY    = 8;
+                $qrSize = 58;
+                $qrX    = 145;
+                $qrY    = 10;
                 $pdf->Image($qrFilePath, $qrX, $qrY, $qrSize, $qrSize, 'PNG');
 
-                $pdf->SetFont('Arial', '', 6);
+                $pdf->SetFont('Arial', '', 5);
                 $pdf->SetXY($qrX, $qrY + $qrSize + 1);
                 $pdf->Cell($qrSize, 3, 'SCAN CHECK-IN', 0, 0, 'C');
             }
