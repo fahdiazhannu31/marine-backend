@@ -1672,7 +1672,7 @@ class Admin extends BaseController
      * bordered card with an orange header, info fields, and a QR code
      * for check-in scanning.
      */
- public function printBoardingPassPdf($bookingId = 0)
+public function printBoardingPassPdf($bookingId = 0)
 {
     try {
         $db = \Config\Database::connect();
@@ -1710,8 +1710,6 @@ class Admin extends BaseController
             ]);
         }
  
-        // "Group" = whoever made the booking. "Name" (per seat) = the actual
-        // occupant of that seat, entered by the group leader at checkout.
         $groupName = $result->group_name ?: $result->user_name;
  
         $seats = [];
@@ -1724,8 +1722,6 @@ class Admin extends BaseController
             $seats = ['-'];
         }
  
-        // Align passenger names 1:1 with $seats; fall back to the group
-        // name for any seat that doesn't have a stored passenger name.
         $rawPassengerNames = $result->passenger_names !== null
             ? explode('|', $result->passenger_names)
             : [];
@@ -1737,7 +1733,7 @@ class Admin extends BaseController
  
         $boatName = $result->boat_departure_name ?: 'NAMA KAPAL';
  
-        // ── Generate QR code lokal (payload sama seperti yang dipakai scanner) ──
+        // ── Generate QR code lokal ──
         $qrDir = WRITEPATH . 'uploads/qr_codes/';
         if (!is_dir($qrDir)) {
             mkdir($qrDir, 0775, true);
@@ -1748,185 +1744,114 @@ class Admin extends BaseController
         $qrCode = \Endroid\QrCode\QrCode::create($qrContent)
             ->setEncoding(new \Endroid\QrCode\Encoding\Encoding('UTF-8'))
             ->setSize(300)
-            ->setMargin(8)
+            ->setMargin(6)
             ->setForegroundColor(new \Endroid\QrCode\Color\Color(0, 0, 0))
             ->setBackgroundColor(new \Endroid\QrCode\Color\Color(255, 255, 255));
  
         $qrFilePath = $qrDir . uniqid('bp_') . '.png';
         $writer->write($qrCode)->saveToFile($qrFilePath);
  
-        // ── Bangun PDF (1 halaman per kursi) ──
-        $pdf = new BoardingPassPDF('L', 'mm', [210, 95]);
+        // ── Bangun PDF: PORTRAIT 100mm x 76mm (4" x 3", pas untuk label roll
+        // printer thermal 203DPI seperti Grozziie) — 1 halaman = 1 label kursi ──
+        $pdf = new BoardingPassPDF('P', 'mm', [100, 76]);
         $pdf->SetAutoPageBreak(false);
         $pdf->SetTitle('Boarding-Pass-' . $result->id);
  
         $formattedDate = $result->date_departure
-            ? strtoupper(date('d F Y', strtotime($result->date_departure)))
+            ? strtoupper(date('d M Y', strtotime($result->date_departure)))
             : 'N/A';
         $boardingTime = $result->date_departure
             ? date('H:i', strtotime($result->date_departure))
             : 'N/A';
  
+        $orange     = [242, 136, 28];
+        $labelGray  = [150, 155, 160];
+        $darkText   = [26, 26, 26];
+ 
         foreach ($seats as $seatIndex => $seatNumber) {
             $passengerName = $passengerNames[$seatIndex] ?? $groupName;
             $pdf->AddPage();
  
-            // ===== Ukuran dasar kartu (SATU kartu menyatu, tidak terpisah) =====
-            $marginX = 6;
-            $marginY = 6;
-            $cardX = $marginX;
-            $cardY = $marginY;
-            $cardW = 210 - ($marginX * 2);   // 198
-            $cardH = 95 - ($marginY * 2);    // 83
+            $marginX = 3;
+            $pageW = 100;
+            $pageH = 76;
  
-            $mainCardW = $cardW;              // kartu utama = full width kartu
-            $vStripW   = 9;                   // lebar strip vertikal nama kapal
-            $perfX     = $cardX + 130;         // posisi garis titik-titik (pemisah stub)
- 
-            $orange = [242, 136, 28];
-            $borderGray = [220, 222, 226];
-            $labelGray  = [150, 155, 160];
- 
-            // ======================================================
-            // KARTU (border & header tunggal, menyatu penuh)
-            // ======================================================
-            $pdf->SetDrawColor(...$borderGray);
-            $pdf->SetLineWidth(0.4);
-            $pdf->Rect($cardX, $cardY, $cardW, $cardH);
- 
-            $headerHMain = 15;
+            // ===== HEADER =====
+            $headerH = 9;
             $pdf->SetFillColor(...$orange);
-            $pdf->Rect($cardX, $cardY, $cardW, $headerHMain, 'F');
+            $pdf->Rect(0, 0, $pageW, $headerH, 'F');
  
-            // Ikon yacht (auto: pakai PNG kalau ada, kalau tidak pakai vector) + judul
-            $pdf->YachtIconAuto($cardX + 4, $cardY + 2.5, 11, 10);
+            $pdf->YachtIconAuto($marginX, 1.3, 7, 6.5);
             $pdf->SetTextColor(255, 255, 255);
-            $pdf->SetFont('Arial', 'B', 14);
-            $pdf->SetXY($cardX + 17, $cardY + 4);
-            $pdf->Cell($cardW - 20, 7, 'Boarding Pass', 0, 0, 'L');
+            $pdf->SetFont('Arial', 'B', 10);
+            $pdf->SetXY($marginX + 9, 1.8);
+            $pdf->Cell($pageW - ($marginX + 9) - 3, 5.5, 'BOARDING PASS', 0, 0, 'L');
             $pdf->SetTextColor(0, 0, 0);
  
-            $bodyTopMain = $cardY + $headerHMain;
+            $bodyTop = $headerH + 2; // 11
  
-            // Garis titik-titik pemisah antara boarding pass utama & stub
-            $pdf->SetFillColor(...$borderGray);
-            $pdf->DottedLine($perfX, $bodyTopMain + 2, $perfX, $cardY + $cardH - 2);
- 
-            // --- Strip vertikal: nama kapal (rotated) ---
-            $pdf->SetDrawColor(...$borderGray);
-            $pdf->SetLineWidth(0.3);
-            $pdf->Line($cardX + $vStripW, $bodyTopMain, $cardX + $vStripW, $cardY + $cardH);
- 
-            $pdf->SetFont('Arial', 'B', 9);
-            $pdf->SetTextColor(60, 60, 60);
-            $stripCenterY = $bodyTopMain + (($cardY + $cardH) - $bodyTopMain) / 2;
-            $pdf->RotatedText($cardX + $vStripW - 2.5, $stripCenterY + 5, strtoupper($boatName), 90);
-            $pdf->SetTextColor(0, 0, 0);
- 
-            // --- Kolom isi kartu utama ---
-            $contentX = $cardX + $vStripW + 4;
-            $col1X = $contentX;
-            $col2X = $col1X + 42;
-            $qrSize = 26;
-            $qrX = $perfX - $qrSize - 5;
- 
-            $labelSizeMain = 6.5;
-            $valueSizeMain = 9.5;
-            $colWMain = 40;
- 
-            $fieldMain = function ($x, $y, $label, $value, $valueColor = [26, 26, 26]) use ($pdf, $labelSizeMain, $valueSizeMain, $colWMain) {
-                $pdf->SetFont('Arial', '', $labelSizeMain);
-                $pdf->SetTextColor(...[150, 155, 160]);
-                $pdf->SetXY($x, $y);
-                $pdf->Cell($colWMain, 3.5, strtoupper($label), 0, 2);
- 
-                $pdf->SetFont('Arial', 'B', $valueSizeMain);
-                [$r, $g, $b] = $valueColor;
-                $pdf->SetTextColor($r, $g, $b);
-                $pdf->SetXY($x, $y + 4);
-                $pdf->Cell($colWMain, 5.5, $value, 0, 2);
-                $pdf->SetTextColor(0, 0, 0);
-            };
- 
-            $y = $bodyTopMain + 7;
-            $fieldMain($col1X, $y, 'Group', $groupName); $y += 13.5;
-            $fieldMain($col1X, $y, 'Name', $passengerName); $y += 13.5;
-            $fieldMain($col1X, $y, 'Boarding Time', $boardingTime); $y += 13.5;
- 
-            $pdf->SetFont('Arial', '', $labelSizeMain);
-            $pdf->SetTextColor(...$labelGray);
-            $pdf->SetXY($col1X, $y);
-            $pdf->Cell(20, 3.5, 'TOTAL PAX', 0, 0);
-            $pdf->SetXY($col1X + 20, $y);
-            $pdf->Cell(20, 3.5, 'SEAT NO.', 0, 0);
- 
-            $pdf->SetFont('Arial', 'B', $valueSizeMain);
-            $pdf->SetTextColor(26, 26, 26);
-            $pdf->SetXY($col1X, $y + 4);
-            $pdf->Cell(20, 5.5, (string) $result->jml_pax, 0, 0);
-            $pdf->SetTextColor(...$orange);
-            $pdf->SetXY($col1X + 20, $y + 4);
-            $pdf->Cell(20, 5.5, (string) $seatNumber, 0, 0);
-            $pdf->SetTextColor(0, 0, 0);
- 
-            $y = $bodyTopMain + 7;
-            $fieldMain($col2X, $y, 'Date', $formattedDate); $y += 13.5;
-            $fieldMain($col2X, $y, 'From', 'Baywalk'); $y += 13.5;
-            $fieldMain($col2X, $y, 'To', $result->package_name ?: 'N/A'); $y += 13.5;
-            $fieldMain($col2X, $y, 'Boat', $result->boat_departure_name ?: 'N/A');
- 
-            // --- QR code kartu utama ---
-            $pdf->Image($qrFilePath, $qrX, $bodyTopMain + 4, $qrSize, $qrSize, 'PNG');
-            $pdf->SetFont('Arial', 'B', 6.5);
-            $pdf->SetTextColor(...$labelGray);
-            $pdf->SetXY($qrX, $bodyTopMain + 4 + $qrSize + 2);
-            $pdf->Cell($qrSize, 3.5, 'SCAN TO CHECK-IN', 0, 0, 'C');
-            $pdf->SetTextColor(0, 0, 0);
- 
-            // ======================================================
-            // STUB (kanan) - sobekan untuk check-in, MENYATU dengan
-            // kartu utama, hanya dipisahkan garis titik-titik di atas.
-            // ======================================================
-            $stubCardX = $perfX + 4;
-            $stubCardW = ($cardX + $cardW) - $stubCardX - 4;
- 
-            $bodyTopStub = $bodyTopMain + 4;
-            $stubPadX = 0;
-            $stubColW = ($stubCardW - $stubPadX * 2 - 3) / 2;
- 
-            $labelSizeStub = 5.6;
-            $valueSizeStub = 7.6;
- 
-            $fieldStub = function ($x, $y, $w, $label, $value, $valueColor = [26, 26, 26]) use ($pdf, $labelSizeStub, $valueSizeStub, $labelGray) {
-                $pdf->SetFont('Arial', '', $labelSizeStub);
+            // Small helper: label above, value below, at (x, y), width w
+            $field = function ($x, $y, $w, $label, $value, $labelSize = 5.5, $valueSize = 8, $valueColor = null, $align = 'L') use ($pdf, $labelGray, $darkText) {
+                $pdf->SetFont('Arial', '', $labelSize);
                 $pdf->SetTextColor(...$labelGray);
                 $pdf->SetXY($x, $y);
-                $pdf->Cell($w, 3, strtoupper($label), 0, 2);
+                $pdf->Cell($w, 3, strtoupper($label), 0, 2, $align);
  
-                $pdf->SetFont('Arial', 'B', $valueSizeStub);
-                [$r, $g, $b] = $valueColor;
-                $pdf->SetTextColor($r, $g, $b);
-                $pdf->SetXY($x, $y + 3.4);
-                $pdf->Cell($w, 4.5, $value, 0, 2);
+                $pdf->SetFont('Arial', 'B', $valueSize);
+                $color = $valueColor ?: $darkText;
+                $pdf->SetTextColor(...$color);
+                $pdf->SetXY($x, $y + 3.2);
+                $pdf->Cell($w, 5, $value, 0, 2, $align);
                 $pdf->SetTextColor(0, 0, 0);
             };
  
-            $sy = $bodyTopStub + 5;
-            $fieldStub($stubCardX + $stubPadX, $sy, $stubCardW - $stubPadX * 2, 'Group', $groupName);
-            $sy += 10.5;
-            $fieldStub($stubCardX + $stubPadX, $sy, $stubCardW - $stubPadX * 2, 'Passenger', $passengerName);
-            $sy += 10.5;
+            $dashed = function ($y) use ($pdf, $marginX, $pageW) {
+                $pdf->SetFillColor(210, 212, 216);
+                $pdf->DottedLine($marginX, $y, $pageW - $marginX, $y);
+            };
  
-            $fieldStub($stubCardX + $stubPadX, $sy, $stubColW, 'Boarding Time', $boardingTime);
-            $fieldStub($stubCardX + $stubPadX + $stubColW + 3, $sy, $stubColW, 'Total Pax', (string) $result->jml_pax);
-            $sy += 10.5;
+            // ===== ROW 1: PASSENGER NAME (kiri, besar) + SEAT (kanan, badge) =====
+            $field($marginX, $bodyTop, 62, 'Passenger', $passengerName, 5.5, 10);
  
-            $fieldStub($stubCardX + $stubPadX, $sy, $stubColW, 'From', 'Baywalk');
-            $fieldStub($stubCardX + $stubPadX + $stubColW + 3, $sy, $stubColW, 'To', $result->package_name ?: 'N/A');
-            $sy += 10.5;
+            $pdf->SetFont('Arial', '', 5.5);
+            $pdf->SetTextColor(...$labelGray);
+            $pdf->SetXY(78, $bodyTop);
+            $pdf->Cell(19, 3, 'SEAT', 0, 2, 'C');
+            $pdf->SetFont('Arial', 'B', 15);
+            $pdf->SetTextColor(...$orange);
+            $pdf->SetXY(78, $bodyTop + 3.2);
+            $pdf->Cell(19, 7, (string) $seatNumber, 0, 2, 'C');
+            $pdf->SetTextColor(0, 0, 0);
  
-            $fieldStub($stubCardX + $stubPadX, $sy, $stubColW, 'Boat', $result->boat_departure_name ?: 'N/A');
-            $fieldStub($stubCardX + $stubPadX + $stubColW + 3, $sy, $stubColW, 'Seat', (string) $seatNumber, $orange);
+            $dashed($bodyTop + 12); // ~y=23
+ 
+            // ===== ROW 2: GROUP / DATE / BOARDING TIME (kiri) + QR (kanan) =====
+            $row2Top = $bodyTop + 14; // ~25
+            $field($marginX, $row2Top, 45, 'Group', $groupName, 5.5, 8);
+            $field($marginX, $row2Top + 8, 45, 'Date', $formattedDate, 5.5, 8);
+            $field($marginX, $row2Top + 16, 45, 'Boarding Time', $boardingTime, 5.5, 8);
+ 
+            $qrSize = 22;
+            $qrX = $pageW - $marginX - $qrSize;
+            $qrY = $row2Top;
+            $pdf->Image($qrFilePath, $qrX, $qrY, $qrSize, $qrSize, 'PNG');
+            $pdf->SetFont('Arial', '', 5);
+            $pdf->SetTextColor(...$labelGray);
+            $pdf->SetXY($qrX, $qrY + $qrSize + 1);
+            $pdf->Cell($qrSize, 3, 'SCAN CHECK-IN', 0, 0, 'C');
+            $pdf->SetTextColor(0, 0, 0);
+ 
+            $dashed($row2Top + 26); // ~51
+ 
+            // ===== ROW 3: BOAT / TOTAL PAX  +  FROM / TO =====
+            $row3Top = $row2Top + 28; // ~53
+            $halfW = ($pageW - $marginX * 2) / 2;
+ 
+            $field($marginX, $row3Top, $halfW - 2, 'Boat', $result->boat_departure_name ?: 'N/A', 5.5, 7.5);
+            $field($marginX + $halfW, $row3Top, $halfW - 2, 'Total Pax', (string) $result->jml_pax, 5.5, 7.5);
+ 
+            $field($marginX, $row3Top + 8, $halfW - 2, 'From', 'Baywalk', 5.5, 7.5);
+            $field($marginX + $halfW, $row3Top + 8, $halfW - 2, 'To', $result->package_name ?: 'N/A', 5.5, 7.5);
         }
  
         @unlink($qrFilePath);
@@ -1940,6 +1865,8 @@ class Admin extends BaseController
         ]);
     }
 }
+ 
+
     public function getTicketData($bookingId)
 {
     // Set CORS headers
