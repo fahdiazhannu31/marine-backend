@@ -2341,9 +2341,30 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         $h2 = $fieldStacked($col2X, $y, $halfW, 'Tujuan', $destination !== 'N/A' ? $destination : $direction, [26,26,26], 5.0, 7.5);
         $y += max(9, max($h1, $h2) + 1.5);
 
-        // SEAT (large accent) | TICKET CODE
+        // SEAT (large accent) | TICKET CODE (with 2-line wrap if too long)
         $fieldStacked($infoX, $y, $halfW, 'Kursi', $seatNumber, $headerColor, 5.0, 11.0);
-        $fieldStacked($col2X, $y, $halfW, 'Tiket', $ticketCode, [26,26,26], 5.0, 7.0);
+        
+        // TIKET — wrap to 2 lines if too long (manual MultiCell simulation)
+        $pdf->SetFont('Arial', '', 5.0);
+        $pdf->SetTextColor(150, 155, 160);
+        $pdf->SetXY($col2X, $y);
+        $pdf->Cell($halfW, 3, strtoupper('Tiket'), 0, 1);
+
+        $pdf->SetFont('Arial', 'B', 7.0);
+        $pdf->SetTextColor(26, 26, 26);
+
+        // Check if ticket code fits in one line (30 chars rough threshold)
+        $ticketLines = $wrapText($ticketCode, $halfW);
+        $lineHeight = 7.0 * 0.5;
+        $ticketY = $y + 3.3;
+
+        foreach (array_slice($ticketLines, 0, 2) as $line) { // max 2 lines
+            $pdf->SetXY($col2X, $ticketY);
+            $pdf->Cell($halfW, $lineHeight, $line, 0, 1, 'L');
+            $ticketY += $lineHeight;
+        }
+        
+        $pdf->SetTextColor(0, 0, 0);
 
         // ── Captain footer (bottom of info area) ─────────────
         if ($captainName) {
