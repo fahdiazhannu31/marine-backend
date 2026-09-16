@@ -41,7 +41,8 @@ class Filters extends BaseFilters
         'role' => RoleFilter::class, // tambahkan ini
         'permission' => PermissionFilter::class, // tambahkan ini
         // Tambahkan filter 'noauth' untuk mencegah akses jika sudah login
-        'noauth'      => \App\Filters\NoAuthFilter::class
+        'noauth'      => \App\Filters\NoAuthFilter::class,
+        'ratelimit'   => \App\Filters\RateLimitFilter::class,
     ];
 
     /**
@@ -77,7 +78,7 @@ class Filters extends BaseFilters
      */
     public array $globals = [
         'before' => [
-            // 'cors',  // Disabled - using manual CORS headers instead
+            'cors',  // Disabled - using manual CORS headers instead
             // 'honeypot',
             // 'csrf',
             // 'invalidchars',

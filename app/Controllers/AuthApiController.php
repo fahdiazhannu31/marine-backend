@@ -104,13 +104,48 @@ class AuthApiController extends BaseController
             return $this->error('Email and password are required.');
         }
 
+        // Check if account is locked
+        $attemptTracker = new \App\Libraries\LoginAttemptTracker();
+        
+        if ($attemptTracker->isLocked($email)) {
+            $remainingTime = $attemptTracker->getRemainingLockoutTime($email);
+            $minutes = ceil($remainingTime / 60);
+            
+            log_message('warning', "Login attempt on locked account: {$email} from IP: " . $this->request->getIPAddress());
+            
+            return $this->error(
+                "Account temporarily locked due to too many failed attempts. Please try again in {$minutes} minute(s).",
+                423 // 423 Locked
+            );
+        }
+
         /** @var \Myth\Auth\Authentication\LocalAuthenticator $auth */
         $auth = service('authentication');
 
         if (!$auth->attempt(['email' => $email, 'password' => $password])) {
-            return $this->error('Invalid email or password.', 401);
+            // Record failed attempt
+            $result = $attemptTracker->recordFailedAttempt($email, $this->request->getIPAddress());
+            
+            if ($result['locked']) {
+                log_message('warning', "Account locked after failed attempts: {$email}");
+                return $this->error(
+                    "Too many failed login attempts. Account locked for {$result['lockout_minutes']} minutes.",
+                    423
+                );
+            }
+            
+            // Show remaining attempts
+            $message = 'Invalid email or password.';
+            if ($result['remaining_attempts'] <= 3) {
+                $message .= " ({$result['remaining_attempts']} attempts remaining)";
+            }
+            
+            return $this->error($message, 401);
         }
 
+        // Successful login - clear attempts
+        $attemptTracker->clearAttempts($email);
+        
         $user       = $auth->user();
         $tokenModel = new ApiTokenModel();
         $rawToken   = $tokenModel->generateFor((int) $user->id);
@@ -118,6 +153,9 @@ class AuthApiController extends BaseController
         // Determine role
         $groups = $user->getRoles();
         $role   = in_array('admin', $groups) ? 'admin' : 'users';
+
+        // Log successful login
+        log_message('info', "User login: {$email} (ID: {$user->id}) from IP: " . $this->request->getIPAddress());
 
         return $this->json([
             'token' => $rawToken,

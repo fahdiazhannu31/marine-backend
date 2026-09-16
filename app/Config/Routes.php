@@ -105,8 +105,8 @@ $routes->get('/api/routes', 'Route::getRoutes');
 
 // Auth (token-based, untuk React) - MUST be before generic /api routes
 $routes->options('/api/auth/(:any)', 'AuthApiController::options');
-$routes->post('/api/auth/login',    'AuthApiController::login');
-$routes->post('/api/auth/register', 'AuthApiController::register');
+$routes->post('/api/auth/login',    'AuthApiController::login',    ['filter' => 'ratelimit']);
+$routes->post('/api/auth/register', 'AuthApiController::register', ['filter' => 'ratelimit']);
 $routes->post('/api/auth/logout',   'AuthApiController::logout');
 $routes->get('/api/auth/me',        'AuthApiController::me');
 
