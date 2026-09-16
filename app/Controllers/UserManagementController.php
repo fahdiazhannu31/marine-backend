@@ -203,7 +203,7 @@ class UserManagementController extends BaseController
             $phone = str_starts_with($phone, '0') ? '+62' . substr($phone, 1) : '+62' . $phone;
         }
 
-        // Create user
+        // Create user entity
         $nameParts = explode(' ', $fullname);
         $givenNames = $nameParts[0];
         $surname = count($nameParts) > 1 ? implode(' ', array_slice($nameParts, 1)) : '-';
@@ -220,16 +220,27 @@ class UserManagementController extends BaseController
         ]);
         $user->activate();
 
-        // Set role
-        $userModel = $userModel->withGroup($role);
-
+        // Save user first
         if (!$userModel->save($user)) {
             return $this->jsonResponse(['error' => implode(', ', $userModel->errors())], 422);
         }
 
+        $userId = $userModel->getInsertID();
+
+        // Add role to user manually via database
+        $db = \Config\Database::connect();
+        $groupId = $db->table('auth_groups')->where('name', $role)->get()->getRow()->id ?? null;
+        
+        if ($groupId) {
+            $db->table('auth_groups_users')->insert([
+                'group_id' => $groupId,
+                'user_id' => $userId,
+            ]);
+        }
+
         log_message('info', "Admin created new user: {$email} with role: {$role}");
 
-        return $this->jsonResponse(['message' => 'User created successfully', 'user_id' => $userModel->getInsertID()], 201);
+        return $this->jsonResponse(['message' => 'User created successfully', 'user_id' => $userId], 201);
     }
 
     // ═══════════════════════════════════════════
