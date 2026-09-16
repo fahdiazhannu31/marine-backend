@@ -39,7 +39,10 @@ class RateLimitFilter implements FilterInterface
         
         // Get cache service
         $cache = \Config\Services::cache();
-        $key = 'rate_limit:' . md5($ip . ':' . $request->getUri()->getPath());
+        
+        // Sanitize cache key - remove reserved characters
+        $path = $request->getUri()->getPath();
+        $key = 'ratelimit_' . md5($ip . '_' . $path);
         
         // Get current attempts
         $data = $cache->get($key);
