@@ -15,7 +15,8 @@ class ManifestUploadModel extends Model
     protected $allowedFields    = [
         'schedule_id', 'boat_id', 'direction', 'trip_date', 'boat_name',
         'origin', 'destination',
-        'captain_name', 'abk_names', 'gro_name', 'uploaded_by', 'original_file',
+        'captain_name', 'abk_names', 'gro_name', 'kkm_name', 'guard_name', 
+        'uploaded_by', 'original_file',
         'total_pax', 'overnight_count', 'daytrip_count',
         'staff_count', 'foc_count', 'vendor_count',
         'status', 'notes',

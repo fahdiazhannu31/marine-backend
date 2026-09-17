@@ -362,6 +362,8 @@ class ManifestUploadController extends ApiController
             'captain_name'    => null,
             'crew_names'      => null,
             'gro_name'        => null,
+            'kkm_name'        => null,   // Kesehatan Kapal Marine
+            'guard_name'      => null,   // Security/Guard
             'trip_date'       => null,
             'overnight_count' => 0,
             'daytrip_count'   => 0,
@@ -387,6 +389,8 @@ class ManifestUploadController extends ApiController
             'NAHKODA'    => 'captain_name',
             'CREW'       => 'crew_names',
             'GRO'        => 'gro_name',
+            'KKM'        => 'kkm_name',
+            'GUARD'      => 'guard_name',
         ];
 
         // Count labels: the *value* cell is the next non-empty cell after the label
@@ -890,6 +894,8 @@ class ManifestUploadController extends ApiController
             'captain_name'    => $captainName ?: null,
             'abk_names'       => $abkNamesRaw ?: null,
             'gro_name'        => $headerMeta['gro_name'] ?: null,
+            'kkm_name'        => $headerMeta['kkm_name'] ?: null,
+            'guard_name'      => $headerMeta['guard_name'] ?: null,
             'uploaded_by'     => $this->getAuthUserId(),
             'original_file'   => $newFileName,
             'total_pax'       => count($ticketRows),
