@@ -411,11 +411,16 @@ class ManifestUploadController extends ApiController
                 // ── Text labels (ASAL, TUJUAN, NAHKODA, CREW, GRO) ──
                 foreach ($labelMap as $keyword => $metaKey) {
                     if ($cell === $keyword) {
-                        // next non-empty cell in the same row
-                        for ($j = $i + 1; $j < $n; $j++) {
+                        // next non-empty cell in the same row (max 3 cells away to prevent wrong column)
+                        $maxOffset = min($i + 4, $n);
+                        for ($j = $i + 1; $j < $maxOffset; $j++) {
                             $val = trim((string)($cells[$j] ?? ''));
                             if ($val !== '') {
-                                $meta[$metaKey] = $val;
+                                // Skip if the value looks like a count keyword (FOC, VENDOR, STAFF, etc)
+                                $isCountKeyword = in_array($val, ['FOC', 'VENDOR', 'STAFF', 'OVERNIGHT', 'DAY TRIP', 'DAYTRIP'], true);
+                                if (!$isCountKeyword) {
+                                    $meta[$metaKey] = $val;
+                                }
                                 break;
                             }
                         }
