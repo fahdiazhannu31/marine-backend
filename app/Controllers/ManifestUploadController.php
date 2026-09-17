@@ -1762,28 +1762,12 @@ class ManifestUploadController extends ApiController
             $autoLabel = false;
         }
 
-        // ── Build QR content ─────────────────────────────────────────
-        $qrDir = WRITEPATH . 'uploads/qr_codes/';
-        if (!is_dir($qrDir)) mkdir($qrDir, 0775, true);
+        // ── Build QR content (REMOVED - no longer using barcode) ────
+        // Simple text-only design, no QR code generation needed
 
-        $qrContent  = 'NAMA_BAG_' . $bag['upload_id'] . '_' . $id . '_' . strtoupper(str_replace(' ', '_', $bag['group_name']));
-        $qrFilePath = $qrDir . uniqid('bag_') . '.png';
-        $qrOk       = false;
-        try {
-            $writer = new \Endroid\QrCode\Writer\PngWriter();
-            $qrCode = \Endroid\QrCode\QrCode::create($qrContent)
-                ->setEncoding(new \Endroid\QrCode\Encoding\Encoding('UTF-8'))
-                ->setSize(250)->setMargin(4)
-                ->setForegroundColor(new \Endroid\QrCode\Color\Color(0, 0, 0))
-                ->setBackgroundColor(new \Endroid\QrCode\Color\Color(255, 255, 255));
-            $writer->write($qrCode)->saveToFile($qrFilePath);
-            $qrOk = true;
-        } catch (\Exception $e) {
-            $qrFilePath = null;
-        }
-
-        // ── PDF: 105 x 40 mm landscape (long strip for luggage wrap) ─
-        $pdf = new \App\Libraries\BoardingPassPDF('L', 'mm', [105, 40]);
+        // ── PDF: 40 x 220 mm portrait (long strip for luggage) ───────
+        // Simple design: text only, no colors, no barcode
+        $pdf = new \App\Libraries\BoardingPassPDF('P', 'mm', [40, 220]);
         $pdf->SetAutoPageBreak(false);
         $pdf->SetTitle('Baggage-Tag-' . $id);
         $pdf->SetMargins(0, 0, 0);
@@ -1793,130 +1777,96 @@ class ManifestUploadController extends ApiController
         for ($page = 1; $page <= $bagCount; $page++) {
             $pdf->AddPage();
 
-            $W = 105;   // page width mm
-            $H = 40;    // page height mm
+            $W = 40;    // page width mm
+            $H = 220;   // page height mm
 
-            // ── Outer border ──────────────────────────────────────────
-            $pdf->SetDrawColor(210, 210, 210);
-            $pdf->SetLineWidth(0.35);
-            $pdf->Rect(1, 1, $W - 2, $H - 2);
+            // ── Simple border ─────────────────────────────────────────
+            $pdf->SetDrawColor(0, 0, 0);
+            $pdf->SetLineWidth(0.5);
+            $pdf->Rect(2, 2, $W - 4, $H - 4);
 
-            // ── Left header band (brand color, full height) ───────────
-            $bandW = 22;
-            $pdf->SetFillColor(...$brandColor);
-            $pdf->Rect(1, 1, $bandW, $H - 2, 'F');
+            // ── Content (centered, text only) ─────────────────────────
+            $cy = 10;
+            $pdf->SetTextColor(0, 0, 0);
 
-            // Yacht icon in band (centred vertically)
-            $pdf->YachtIconAuto(3, 3, 9, 8);
+            // NAMA Marine logo/title
+            $pdf->SetFont('Arial', 'B', 12);
+            $pdf->SetXY(0, $cy);
+            $pdf->Cell($W, 8, 'NAMA Marine', 0, 1, 'C');
+            $cy += 12;
 
-            // "NAMA Marine" vertical text replaced with stacked lines
-            $pdf->SetFont('Arial', 'B', 7);
-            $pdf->SetTextColor(...$headerTextColor);
-            $pdf->SetXY(2, 13);
-            $pdf->Cell($bandW - 2, 4, 'NAMA', 0, 1, 'C');
-            $pdf->SetXY(2, 17);
-            $pdf->Cell($bandW - 2, 4, 'Marine', 0, 1, 'C');
+            // Divider
+            $pdf->SetDrawColor(100, 100, 100);
+            $pdf->SetLineWidth(0.3);
+            $pdf->Line(8, $cy, $W - 8, $cy);
+            $cy += 8;
 
-            // Direction badge at bottom of band
-            $pdf->SetFont('Arial', 'B', 5.5);
-            $pdf->SetXY(2, $H - 9);
-            $pdf->Cell($bandW - 2, 3.5, $dirLabel, 0, 0, 'C');
-
-            // Bag counter at very bottom of band
-            $pdf->SetFont('Arial', 'B', 6);
-            $pdf->SetXY(2, $H - 5.5);
-            $pdf->Cell($bandW - 2, 3.5, $page . '/' . $bagCount, 0, 0, 'C');
-
-            $pdf->SetTextColor(30, 30, 30);
-
-            // ── Right QR block ────────────────────────────────────────
-            $qrSize = 26;
-            $qrX    = $W - $qrSize - 3;
-            $qrY    = 2;              // pin QR to top, not centred
-
-            if ($qrOk && $qrFilePath && file_exists($qrFilePath)) {
-                $pdf->Image($qrFilePath, $qrX, $qrY, $qrSize, $qrSize, 'PNG');
-            }
-
-            // Dotted separator left of QR — full card height
-            $pdf->SetFillColor(200, 200, 200);
-            $pdf->DottedLine($qrX - 2, 2, $qrX - 2, $H - 2, 0.25, 1.2);
-
-            // ── Middle content area (strictly stays left of separator) ─
-            $cx  = $bandW + 4;
-            $cw  = $qrX - $cx - 4;   // hard stop before dotted line
-            $cy  = 3;
-
-            // Guest name
+            // Guest Name (large, bold)
             $pdf->SetFont('Arial', 'B', 10);
-            $pdf->SetTextColor(20, 20, 20);
-            $pdf->SetXY($cx, $cy);
             $guestName = strtoupper($bag['group_name'] ?? '');
-            if (mb_strlen($guestName) > 22) $guestName = mb_substr($guestName, 0, 19) . '...';
-            $pdf->Cell($cw, 6, $guestName, 0, 0, 'L');
+            $pdf->SetXY(5, $cy);
+            $pdf->MultiCell($W - 10, 6, $guestName, 0, 'C');
+            $cy += 18;
+
+            // Boat name
+            $pdf->SetFont('Arial', 'B', 9);
+            $pdf->SetXY(5, $cy);
+            $pdf->Cell($W - 10, 6, strtoupper($boatName), 0, 1, 'C');
+            $cy += 10;
+
+            // Date
+            $pdf->SetFont('Arial', '', 8);
+            $pdf->SetXY(5, $cy);
+            $pdf->Cell($W - 10, 5, $tripDateFmt, 0, 1, 'C');
+            $cy += 8;
+
+            // Direction
+            $pdf->SetXY(5, $cy);
+            $pdf->Cell($W - 10, 5, $dirLabel, 0, 1, 'C');
+            $cy += 8;
 
             // Route
-            $cy += 6.5;
-            $pdf->SetFont('Arial', '', 6.5);
-            $pdf->SetTextColor(100, 100, 100);
-            $routeText = strtoupper($origin) . ' >> ' . strtoupper($destination);
-            if (mb_strlen($routeText) > 32) $routeText = mb_substr($routeText, 0, 29) . '...';
-            $pdf->SetXY($cx, $cy);
-            $pdf->Cell($cw, 3.5, $routeText, 0, 0, 'L');
+            $routeText = strtoupper($origin) . ' - ' . strtoupper($destination);
+            $pdf->SetXY(5, $cy);
+            $pdf->Cell($W - 10, 5, $routeText, 0, 1, 'C');
+            $cy += 12;
 
-            // Thin divider
-            $cy += 4.5;
-            $pdf->SetDrawColor(220, 220, 220);
-            $pdf->SetLineWidth(0.2);
-            $pdf->Line($cx, $cy, $cx + $cw, $cy);
-            $cy += 2.5;
+            // Divider
+            $pdf->Line(8, $cy, $W - 8, $cy);
+            $cy += 8;
 
-            // Fields: single-column stacked (no 2-col overlap risk)
-            $lw   = 12;    // label column width
-            $vw   = $cw - $lw;  // value column width
-            $rowH = 4.0;
-
-            $fields = [
-                ['Boat',  strtoupper(mb_substr($boatName, 0, 20))],
-                ['Label', $autoLabel
-                    ? strtoupper($bag['bag_label'] . '-' . str_pad($page, 3, '0', STR_PAD_LEFT))
-                    : strtoupper($bag['bag_label'] ?? '-')],
-            ];
-            if (!empty($bag['weight_kg'])) {
-                $fields[] = ['Wt', $bag['weight_kg'] . ' kg'];
-            }
-            $fields[] = ['Date',  $tripDateFmt];
-            $fields[] = ['Bags',  ($bag['bag_count'] ?? 1) . ' pcs'];
-
-            foreach ($fields as [$label, $val]) {
-                if ($cy > $H - 8) break;
-                $pdf->SetFont('Arial', '', 5.5);
-                $pdf->SetTextColor(130, 130, 130);
-                $pdf->SetXY($cx, $cy);
-                $pdf->Cell($lw, $rowH, $label, 0, 0, 'L');
-
-                if (mb_strlen($val) > 22) $val = mb_substr($val, 0, 20) . '..';
-                $pdf->SetFont('Arial', 'B', 6.5);
-                $pdf->SetTextColor(20, 20, 20);
-                $pdf->SetXY($cx + $lw, $cy);
-                $pdf->Cell($vw, $rowH, $val, 0, 0, 'L');
-                $cy += $rowH;
-            }
-
-            // Bag label at bottom of content
+            // Bag label (if auto-generated)
             $bagLabel = $autoLabel
                 ? strtoupper($bag['bag_label'] . '-' . str_pad($page, 3, '0', STR_PAD_LEFT))
-                : strtoupper($bag['bag_label']);
-            $pdf->SetFont('Arial', 'B', 6);
-            $pdf->SetTextColor(...$brandColor);
-            $pdf->SetXY($cx, $H - 5.5);
-            $pdf->Cell($cw, 4, $bagLabel, 0, 0, 'L');
+                : strtoupper($bag['bag_label'] ?? '-');
+            $pdf->SetFont('Arial', 'B', 11);
+            $pdf->SetXY(5, $cy);
+            $pdf->Cell($W - 10, 6, $bagLabel, 0, 1, 'C');
+            $cy += 10;
+
+            // Weight (if available)
+            if (!empty($bag['weight_kg'])) {
+                $pdf->SetFont('Arial', '', 8);
+                $pdf->SetXY(5, $cy);
+                $pdf->Cell($W - 10, 5, 'Weight: ' . $bag['weight_kg'] . ' kg', 0, 1, 'C');
+                $cy += 8;
+            }
+
+            // Bag count
+            $pdf->SetFont('Arial', '', 7);
+            $pdf->SetXY(5, $cy);
+            $pdf->Cell($W - 10, 5, 'Bag ' . $page . ' of ' . $bagCount, 0, 1, 'C');
+            $cy += 10;
+
+            // Description (if available)
+            if (!empty($bag['description'])) {
+                $pdf->SetFont('Arial', '', 6);
+                $pdf->SetXY(5, $cy);
+                $pdf->MultiCell($W - 10, 4, substr($bag['description'], 0, 100), 0, 'C');
+            }
         }
 
-        // ── Cleanup QR temp ──────────────────────────────────────────
-        if ($qrFilePath && file_exists($qrFilePath)) {
-            @unlink($qrFilePath);
-        }
+        // ── Cleanup (no QR temp files to remove) ─────────────────────
 
         // ── Mark as printed ──────────────────────────────────────────
         $db->table('manifest_baggage')
