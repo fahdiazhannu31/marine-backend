@@ -1432,10 +1432,39 @@ class ManifestUploadController extends ApiController
         }
         $tickets = (new ManifestTicketModel())->getByUpload($id);
         $baggage = (new ManifestBaggageModel())->getByUpload($id);
+        
+        // Fetch currently assigned crew for this schedule (dynamic - can be changed via crew management)
+        $db = \Config\Database::connect();
+        $crewAssignments = [];
+        if ($upload['schedule_id']) {
+            $assignments = $db->table('crew_assignments ca')
+                ->select('ca.*, c.name as crew_name, c.role as crew_role')
+                ->join('crew c', 'c.id = ca.crew_id', 'left')
+                ->where('ca.schedule_id', $upload['schedule_id'])
+                ->where('ca.trip_date', $upload['trip_date'])
+                ->where('ca.direction', $upload['direction'])
+                ->get()
+                ->getResultArray();
+            
+            // Group by role for easy access
+            foreach ($assignments as $a) {
+                $role = $a['crew_role'] ?? 'other';
+                if (!isset($crewAssignments[$role])) {
+                    $crewAssignments[$role] = [];
+                }
+                $crewAssignments[$role][] = [
+                    'id' => $a['crew_id'],
+                    'name' => $a['crew_name'],
+                    'assignment_id' => $a['id'],
+                ];
+            }
+        }
+        
         return $this->jsonResponse([
             'upload'  => $upload,
             'tickets' => $tickets,
             'baggage' => $baggage,
+            'crew_assignments' => $crewAssignments,
         ]);
     }
 

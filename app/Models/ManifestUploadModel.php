@@ -31,8 +31,9 @@ class ManifestUploadModel extends Model
     {
         $db = \Config\Database::connect();
         return $db->table('manifest_uploads mu')
-            ->select('mu.*, COUNT(mt.id) AS ticket_count')
+            ->select('mu.*, COUNT(mt.id) AS ticket_count, s.date as schedule_date')
             ->join('manifest_tickets mt', 'mt.upload_id = mu.id', 'left')
+            ->join('schedule s', 's.id = mu.schedule_id', 'left')
             ->where('mu.id', $id)
             ->groupBy('mu.id')
             ->get()
