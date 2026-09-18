@@ -1053,41 +1053,68 @@ class ManifestUploadController extends ApiController
         // ── 11. Auto-assign crew to schedule ─────────────────────────
         $crewAssignResults = [];
 
+        log_message('info', "=== CREW AUTO-ASSIGN DEBUG ===");
+        log_message('info', "Captain name: " . ($captainName ?: 'EMPTY'));
+        log_message('info', "ABK names raw: " . ($abkNamesRaw ?: 'EMPTY'));
+        log_message('info', "GRO name: " . ($headerMeta['gro_name'] ?? 'EMPTY'));
+        log_message('info', "Schedule ID: {$scheduleId}");
+        log_message('info', "Boat ID: {$boatId}");
+        log_message('info', "Trip date: {$tripDate}");
+        log_message('info', "Direction: {$direction}");
+
         // Captain
         if ($captainName && $scheduleId) {
+            log_message('info', "Attempting to assign captain: {$captainName}");
             $crewAssignResults['captain'] = $this->autoAssignCrewByName(
                 $captainName, 'captain', $scheduleId, $boatId, $tripDate, $direction
             );
+            log_message('info', "Captain assign result: " . json_encode($crewAssignResults['captain']));
+        } else {
+            log_message('warning', "Captain auto-assign SKIPPED - captainName or scheduleId missing");
         }
 
         // ABK / Crew — supports multiple names separated by comma or newline
         if ($abkNamesRaw && $scheduleId) {
+            log_message('info', "Attempting to assign ABK crew: {$abkNamesRaw}");
             $abkList = array_filter(array_map('trim',
                 preg_split('/[,\n]+/', $abkNamesRaw)
             ));
+            log_message('info', "ABK list parsed: " . json_encode($abkList));
             foreach ($abkList as $abkName) {
                 if ($abkName) {
-                    $crewAssignResults['abk'][] = $this->autoAssignCrewByName(
+                    $result = $this->autoAssignCrewByName(
                         $abkName, 'abk', $scheduleId, $boatId, $tripDate, $direction
                     );
+                    $crewAssignResults['abk'][] = $result;
+                    log_message('info', "ABK '{$abkName}' assign result: " . json_encode($result));
                 }
             }
+        } else {
+            log_message('warning', "ABK auto-assign SKIPPED - abkNamesRaw or scheduleId missing");
         }
 
         // GRO — supports multiple names separated by comma or newline
         $groNameRaw = $headerMeta['gro_name'] ?? '';
         if ($groNameRaw && $scheduleId) {
+            log_message('info', "Attempting to assign GRO: {$groNameRaw}");
             $groList = array_filter(array_map('trim',
                 preg_split('/[,\n]+/', $groNameRaw)
             ));
+            log_message('info', "GRO list parsed: " . json_encode($groList));
             foreach ($groList as $groName) {
                 if ($groName) {
-                    $crewAssignResults['gro'][] = $this->autoAssignCrewByName(
+                    $result = $this->autoAssignCrewByName(
                         $groName, 'gro', $scheduleId, $boatId, $tripDate, $direction
                     );
+                    $crewAssignResults['gro'][] = $result;
+                    log_message('info', "GRO '{$groName}' assign result: " . json_encode($result));
                 }
             }
+        } else {
+            log_message('warning', "GRO auto-assign SKIPPED - groNameRaw or scheduleId missing");
         }
+
+        log_message('info', "=== END CREW AUTO-ASSIGN DEBUG ===");
 
         // Backward compat
         $captainAssignResult = $crewAssignResults['captain'] ?? ['status' => 'skipped'];
