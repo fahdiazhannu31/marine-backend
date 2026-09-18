@@ -1904,7 +1904,7 @@ class ManifestUploadController extends ApiController
             $pdf->Line(8, $cy, $W - 8, $cy);
             $cy += 8;
 
-            // Bag label (if auto-generated)
+            // Bag label (if auto-generated) - KEEP IN MIDDLE for visibility
             $bagLabel = $autoLabel
                 ? strtoupper($bag['bag_label'] . '-' . str_pad($page, 3, '0', STR_PAD_LEFT))
                 : strtoupper($bag['bag_label'] ?? '-');
@@ -1913,26 +1913,41 @@ class ManifestUploadController extends ApiController
             $pdf->Cell($W - 10, 6, $bagLabel, 0, 1, 'C');
             $cy += 10;
 
-            // Weight (if available)
-            if (!empty($bag['weight_kg'])) {
-                $pdf->SetFont('Arial', '', 8);
-                $pdf->SetXY(5, $cy);
-                $pdf->Cell($W - 10, 5, 'Weight: ' . $bag['weight_kg'] . ' kg', 0, 1, 'C');
-                $cy += 8;
-            }
-
-            // Bag count
-            $pdf->SetFont('Arial', '', 7);
-            $pdf->SetXY(5, $cy);
-            $pdf->Cell($W - 10, 5, 'Bag ' . $page . ' of ' . $bagCount, 0, 1, 'C');
-            $cy += 10;
-
-            // Description (if available)
+            // Description (if available) - move closer to bag label
             if (!empty($bag['description'])) {
                 $pdf->SetFont('Arial', '', 6);
                 $pdf->SetXY(5, $cy);
                 $pdf->MultiCell($W - 10, 4, substr($bag['description'], 0, 100), 0, 'C');
+                $cy += 10;
             }
+
+            // ── BOTTOM SECTION (Important info - won't be covered when bag is folded) ──
+            $bottomY = $H - 50;  // Start 50mm from bottom
+
+            // Divider before bottom section
+            $pdf->SetDrawColor(100, 100, 100);
+            $pdf->SetLineWidth(0.3);
+            $pdf->Line(8, $bottomY, $W - 8, $bottomY);
+            $bottomY += 8;
+
+            // Destination (Pulau Sepa Resort) - LARGE & BOLD
+            $pdf->SetFont('Arial', 'B', 10);
+            $pdf->SetXY(5, $bottomY);
+            $pdf->Cell($W - 10, 6, strtoupper($destination), 0, 1, 'C');
+            $bottomY += 12;
+
+            // Weight (if available) - LARGER FONT & BOLD
+            if (!empty($bag['weight_kg'])) {
+                $pdf->SetFont('Arial', 'B', 9);
+                $pdf->SetXY(5, $bottomY);
+                $pdf->Cell($W - 10, 6, 'Weight: ' . $bag['weight_kg'] . ' kg', 0, 1, 'C');
+                $bottomY += 10;
+            }
+
+            // Bag count - LARGER FONT & BOLD
+            $pdf->SetFont('Arial', 'B', 8);
+            $pdf->SetXY(5, $bottomY);
+            $pdf->Cell($W - 10, 6, 'Bag ' . $page . ' of ' . $bagCount, 0, 1, 'C');
         }
 
         // ── Cleanup (no QR temp files to remove) ─────────────────────
