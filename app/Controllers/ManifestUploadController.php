@@ -3015,6 +3015,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         $qb = $db->table('manifest_tickets')
             ->where('upload_id', $uploadId)
             ->where('cancelled', 0)
+            ->orderBy('group_name', 'ASC')
             ->orderBy('seq_no', 'ASC');
 
         // Return view: only OVERNIGHT passengers
@@ -3023,6 +3024,56 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         }
 
         $tickets = $qb->get()->getResultArray();
+
+        // ── Post-process: fill package from group head + format pax_count ──
+        $groupData = []; // [group_name => [package, total_pax]]
+        
+        // First pass: collect group head data
+        foreach ($tickets as $t) {
+            $groupName = $t['group_name'] ?? '';
+            if (empty($groupName)) continue;
+            
+            // Group head = first occurrence with pax_count > 1 or has package
+            if (!isset($groupData[$groupName])) {
+                $groupData[$groupName] = [
+                    'package' => $t['package'],
+                    'total_pax' => 0,
+                ];
+            }
+            $groupData[$groupName]['total_pax']++;
+        }
+
+        // Second pass: fill package and format pax_count
+        foreach ($tickets as $idx => $t) {
+            $groupName = $t['group_name'] ?? '';
+            
+            if (!empty($groupName) && isset($groupData[$groupName])) {
+                // Fill package from group head if empty
+                if (empty($t['package'])) {
+                    $tickets[$idx]['package'] = $groupData[$groupName]['package'];
+                }
+                
+                // Format pax_count for group head (first member)
+                // Show "1 (Total X PAX)" for group head
+                $totalPax = $groupData[$groupName]['total_pax'];
+                if ($totalPax > 1) {
+                    // Mark first member as group head by checking if this is first in group
+                    static $seenGroups = [];
+                    if (!isset($seenGroups[$groupName])) {
+                        $seenGroups[$groupName] = true;
+                        // This is group head
+                        $tickets[$idx]['pax_count_display'] = "1 (Total {$totalPax} PAX)";
+                    } else {
+                        // Regular member
+                        $tickets[$idx]['pax_count_display'] = $t['pax_count'] ?? 1;
+                    }
+                } else {
+                    $tickets[$idx]['pax_count_display'] = $t['pax_count'] ?? 1;
+                }
+            } else {
+                $tickets[$idx]['pax_count_display'] = $t['pax_count'] ?? 1;
+            }
+        }
 
         // For return view, swap origin/destination in upload meta
         if ($view === 'return') {
