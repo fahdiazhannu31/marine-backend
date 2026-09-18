@@ -1114,6 +1114,48 @@ class ManifestUploadController extends ApiController
             log_message('warning', "GRO auto-assign SKIPPED - groNameRaw or scheduleId missing");
         }
 
+        // KKM (Kesehatan Kapal Marine) — supports multiple names
+        $kkmNameRaw = $headerMeta['kkm_name'] ?? '';
+        if ($kkmNameRaw && $scheduleId) {
+            log_message('info', "Attempting to assign KKM: {$kkmNameRaw}");
+            $kkmList = array_filter(array_map('trim',
+                preg_split('/[,\n]+/', $kkmNameRaw)
+            ));
+            log_message('info', "KKM list parsed: " . json_encode($kkmList));
+            foreach ($kkmList as $kkmName) {
+                if ($kkmName) {
+                    $result = $this->autoAssignCrewByName(
+                        $kkmName, 'kkm', $scheduleId, $boatId, $tripDate, $direction
+                    );
+                    $crewAssignResults['kkm'][] = $result;
+                    log_message('info', "KKM '{$kkmName}' assign result: " . json_encode($result));
+                }
+            }
+        } else {
+            log_message('warning', "KKM auto-assign SKIPPED - kkmNameRaw or scheduleId missing");
+        }
+
+        // GUARD (Security) — supports multiple names
+        $guardNameRaw = $headerMeta['guard_name'] ?? '';
+        if ($guardNameRaw && $scheduleId) {
+            log_message('info', "Attempting to assign GUARD: {$guardNameRaw}");
+            $guardList = array_filter(array_map('trim',
+                preg_split('/[,\n]+/', $guardNameRaw)
+            ));
+            log_message('info', "GUARD list parsed: " . json_encode($guardList));
+            foreach ($guardList as $guardName) {
+                if ($guardName) {
+                    $result = $this->autoAssignCrewByName(
+                        $guardName, 'guard', $scheduleId, $boatId, $tripDate, $direction
+                    );
+                    $crewAssignResults['guard'][] = $result;
+                    log_message('info', "GUARD '{$guardName}' assign result: " . json_encode($result));
+                }
+            }
+        } else {
+            log_message('warning', "GUARD auto-assign SKIPPED - guardNameRaw or scheduleId missing");
+        }
+
         log_message('info', "=== END CREW AUTO-ASSIGN DEBUG ===");
 
         // Backward compat
