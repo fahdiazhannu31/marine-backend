@@ -1863,95 +1863,116 @@ class ManifestUploadController extends ApiController
         // ── Build QR content (REMOVED - no longer using barcode) ────
         // Simple text-only design, no QR code generation needed
 
-        // ── PDF: 220 x 40 mm landscape (to match printer's landscape feed) ───────
-        // Printer feeds labels in landscape orientation, so swap width/height
-        // Physical label: 40mm wide x 220mm tall → PDF: 220mm wide x 40mm tall
-        $pdf = new \App\Libraries\BoardingPassPDF('L', 'mm', [40, 220]);
+        // ── PDF: 40 x 220 mm portrait (long strip for luggage) ───────
+        // Simple design: text only, no colors, no barcode
+        $pdf = new \App\Libraries\BoardingPassPDF('P', 'mm', [40, 220]);
         $pdf->SetAutoPageBreak(false);
         $pdf->SetTitle('Baggage-Tag-' . $id);
-        
-        // Small top margin for printer alignment
-        $pdf->SetMargins(0, 2, 0);  // 2mm top offset
+        $pdf->SetMargins(0, 0, 0);
 
         $bagCount = max(1, (int)($bag['bag_count'] ?? 1));
 
         for ($page = 1; $page <= $bagCount; $page++) {
             $pdf->AddPage();
 
-            $W = 220;   // page width mm (landscape: long side is width)
-            $H = 40;    // page height mm (landscape: short side is height)
+            $W = 40;    // page width mm
+            $H = 220;   // page height mm
 
             // ── Simple border ─────────────────────────────────────────
             $pdf->SetDrawColor(0, 0, 0);
             $pdf->SetLineWidth(0.5);
             $pdf->Rect(2, 2, $W - 4, $H - 4);
 
-            // ── Content (horizontal layout for landscape) ─────────────────────────
-            $cx = 5;    // start X position
-            $cy = 8;    // center Y position
+            // ── Content (centered, text only) ─────────────────────────
+            $cy = 10;
             $pdf->SetTextColor(0, 0, 0);
 
-            // Column 1: NAMA Marine + Guest Name
-            $col1W = 60;
-            $pdf->SetFont('Arial', 'B', 8);
-            $pdf->SetXY($cx, $cy);
-            $pdf->Cell($col1W, 4, 'NAMA Marine', 0, 0, 'L');
-            
-            $pdf->SetFont('Arial', 'B', 9);
+            // NAMA Marine logo/title
+            $pdf->SetFont('Arial', 'B', 12);
+            $pdf->SetXY(0, $cy);
+            $pdf->Cell($W, 8, 'NAMA Marine', 0, 1, 'C');
+            $cy += 12;
+
+            // Divider
+            $pdf->SetDrawColor(100, 100, 100);
+            $pdf->SetLineWidth(0.3);
+            $pdf->Line(8, $cy, $W - 8, $cy);
+            $cy += 8;
+
+            // Guest Name (large, bold)
+            $pdf->SetFont('Arial', 'B', 10);
             $guestName = strtoupper($bag['group_name'] ?? '');
-            $guestName = strlen($guestName) > 20 ? substr($guestName, 0, 20) : $guestName;
-            $pdf->SetXY($cx, $cy + 6);
-            $pdf->Cell($col1W, 5, $guestName, 0, 0, 'L');
-            
+            $pdf->SetXY(5, $cy);
+            $pdf->MultiCell($W - 10, 6, $guestName, 0, 'C');
+            $cy += 18;
+
             // Boat name
-            $pdf->SetFont('Arial', '', 7);
-            $pdf->SetXY($cx, $cy + 12);
-            $pdf->Cell($col1W, 4, strtoupper($boatName), 0, 0, 'L');
-            
-            $cx += $col1W + 5;
+            $pdf->SetFont('Arial', 'B', 9);
+            $pdf->SetXY(5, $cy);
+            $pdf->Cell($W - 10, 6, strtoupper($boatName), 0, 1, 'C');
+            $cy += 10;
 
-            // Column 2: Trip info
-            $col2W = 50;
-            $pdf->SetFont('Arial', '', 6);
-            $pdf->SetXY($cx, $cy);
-            $pdf->Cell($col2W, 3, $tripDateFmt, 0, 0, 'L');
-            
-            $pdf->SetXY($cx, $cy + 4);
-            $pdf->Cell($col2W, 3, $dirLabel, 0, 0, 'L');
-            
-            $routeText = strtoupper($origin) . '-' . strtoupper($destination);
-            $pdf->SetXY($cx, $cy + 8);
-            $pdf->Cell($col2W, 3, $routeText, 0, 0, 'L');
-            
-            // Destination
-            $pdf->SetFont('Arial', 'B', 7);
-            $pdf->SetXY($cx, $cy + 13);
-            $pdf->Cell($col2W, 4, strtoupper($destination), 0, 0, 'L');
-            
-            $cx += $col2W + 5;
+            // Date
+            $pdf->SetFont('Arial', '', 8);
+            $pdf->SetXY(5, $cy);
+            $pdf->Cell($W - 10, 5, $tripDateFmt, 0, 1, 'C');
+            $cy += 8;
 
-            // Column 3: Bag info (right aligned)
-            $col3W = $W - $cx - 8;
-            
-            // Bag label
+            // Direction
+            $pdf->SetXY(5, $cy);
+            $pdf->Cell($W - 10, 5, $dirLabel, 0, 1, 'C');
+            $cy += 8;
+
+            // Route
+            $routeText = strtoupper($origin) . ' - ' . strtoupper($destination);
+            $pdf->SetXY(5, $cy);
+            $pdf->Cell($W - 10, 5, $routeText, 0, 1, 'C');
+            $cy += 12;
+
+            // ── BOTTOM SECTION (Important info - won't be covered when bag is folded) ──
+            $bottomY = $H - 55;  // Start 55mm from bottom (give more space)
+
+            // Divider before bottom section
+            $pdf->SetDrawColor(100, 100, 100);
+            $pdf->SetLineWidth(0.3);
+            $pdf->Line(8, $bottomY, $W - 8, $bottomY);
+            $bottomY += 8;
+
+            // Bag label (NOVA-MARL-001) - LARGE & BOLD at bottom
             $bagLabel = $autoLabel
                 ? strtoupper($bag['bag_label'] . '-' . str_pad($page, 3, '0', STR_PAD_LEFT))
                 : strtoupper($bag['bag_label'] ?? '-');
-            $pdf->SetFont('Arial', 'B', 9);
-            $pdf->SetXY($cx, $cy);
-            $pdf->Cell($col3W, 5, $bagLabel, 0, 0, 'R');
-            
-            // Weight
+            $pdf->SetFont('Arial', 'B', 12);
+            $pdf->SetXY(5, $bottomY);
+            $pdf->Cell($W - 10, 7, $bagLabel, 0, 1, 'C');
+            $bottomY += 12;
+
+            // Destination (Pulau Sepa Resort) - LARGE & BOLD
+            $pdf->SetFont('Arial', 'B', 10);
+            $pdf->SetXY(5, $bottomY);
+            $pdf->Cell($W - 10, 6, strtoupper($destination), 0, 1, 'C');
+            $bottomY += 11;
+
+            // Weight (if available) - LARGER FONT & BOLD
             if (!empty($bag['weight_kg'])) {
-                $pdf->SetFont('Arial', 'B', 7);
-                $pdf->SetXY($cx, $cy + 7);
-                $pdf->Cell($col3W, 4, $bag['weight_kg'] . ' kg', 0, 0, 'R');
+                $pdf->SetFont('Arial', 'B', 9);
+                $pdf->SetXY(5, $bottomY);
+                $pdf->Cell($W - 10, 6, 'Weight: ' . $bag['weight_kg'] . ' kg', 0, 1, 'C');
+                $bottomY += 10;
             }
-            
-            // Bag count
-            $pdf->SetFont('Arial', '', 6);
-            $pdf->SetXY($cx, $cy + 12);
-            $pdf->Cell($col3W, 3, 'Bag ' . $page . '/' . $bagCount, 0, 0, 'R');
+
+            // Bag count - LARGER FONT & BOLD
+            $pdf->SetFont('Arial', 'B', 8);
+            $pdf->SetXY(5, $bottomY);
+            $pdf->Cell($W - 10, 6, 'Bag ' . $page . ' of ' . $bagCount, 0, 1, 'C');
+
+            // Description (if available) - optional, small text above bottom section
+            if (!empty($bag['description'])) {
+                $descY = $H - 70;  // Above bottom section
+                $pdf->SetFont('Arial', '', 6);
+                $pdf->SetXY(5, $descY);
+                $pdf->MultiCell($W - 10, 4, substr($bag['description'], 0, 100), 0, 'C');
+            }
         }
 
         // ── Cleanup (no QR temp files to remove) ─────────────────────
