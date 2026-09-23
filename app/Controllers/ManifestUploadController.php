@@ -1868,7 +1868,11 @@ class ManifestUploadController extends ApiController
         $pdf = new \App\Libraries\BoardingPassPDF('P', 'mm', [40, 220]);
         $pdf->SetAutoPageBreak(false);
         $pdf->SetTitle('Baggage-Tag-' . $id);
-        $pdf->SetMargins(0, 0, 0);
+        
+        // Set margins to center content if printer doesn't auto-center
+        // Left margin: add offset if content is cut on left side
+        // Values: (left, top, right)
+        $pdf->SetMargins(3, 0, 0);  // 3mm left offset to prevent left-side cut
 
         $bagCount = max(1, (int)($bag['bag_count'] ?? 1));
 
