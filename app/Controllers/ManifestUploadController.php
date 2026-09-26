@@ -2617,28 +2617,20 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             $pdf->SetTextColor(0, 0, 0);
 
             // ── Layout constants ──────────────────────────────────
-            // Left info area: x=0 to 130mm
-            // Die-cut line: x=130mm
-            // Right QR stub: x=130mm to 185mm (55mm wide)
+            // Full page: 185mm x 80mm landscape, no die-cut
+            // Left info area: x=0 to 128mm
+            // Right QR area: x=132mm to 185mm (53mm wide)
             $infoW    = 128;   // info area width
-            $cutX     = 130;   // die-cut line X position
-            $qrStubX  = 132;   // QR stub start X (2mm after cut)
-            $qrStubW  = $pageW - $qrStubX - 2;  // ~51mm
+            $qrAreaX  = 132;   // QR area start X
+            $qrAreaW  = $pageW - $qrAreaX - 2;  // ~51mm
 
             $margin   = 6;
             $cy       = 5;
 
-            // ── Dotted cut line ───────────────────────────────────
-            $pdf->SetDrawColor(180, 180, 180);
+            // Vertical divider between info and QR
+            $pdf->SetDrawColor(220, 220, 220);
             $pdf->SetLineWidth(0.3);
-            $pdf->DottedLine($cutX, 3, $cutX, $pageH - 3);
-
-            // Scissors text
-            $pdf->SetFont('Arial', '', 5);
-            $pdf->SetTextColor(180, 180, 180);
-            $pdf->SetXY($cutX - 3, $pageH / 2 - 2);
-            $pdf->Cell(6, 3, '✂', 0, 0, 'C');
-            $pdf->SetTextColor(0, 0, 0);
+            $pdf->Line(130, 3, 130, $pageH - 3);
 
             // ── LEFT: Info area ───────────────────────────────────
 
@@ -2727,7 +2719,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             $pdf->Cell($colW, 4, $ket, 0, 1, 'L');
             $cy += 4;
 
-            // Ticket code (small, under STATUS)
+            // Ticket code under STATUS
             $maxCharsPerLine = 18;
             if (strlen($ticketCode) > $maxCharsPerLine) {
                 $wrapped = wordwrap($ticketCode, $maxCharsPerLine, "\n", true);
@@ -2752,19 +2744,18 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
                 $pdf->Cell($infoW - $margin * 2, 3, 'Nahkoda: ' . $captainName, 0, 0, 'L');
             }
 
-            // ── RIGHT: QR Stub area ───────────────────────────────
+            // ── RIGHT: QR area (no die-cut, just visual separator) ──
             if ($qrFilePath && file_exists($qrFilePath)) {
-                // QR size: fit in stub width with margins
-                $qrSize = min($qrStubW - 4, $pageH - 14);  // ~47mm
-                $qrX    = $qrStubX + ($qrStubW - $qrSize) / 2;  // center in stub
+                $qrSize = min($qrAreaW - 4, $pageH - 12);  // ~47mm
+                $qrX    = $qrAreaX + ($qrAreaW - $qrSize) / 2;  // center in area
                 $qrY    = ($pageH - $qrSize) / 2;               // center vertically
                 $pdf->Image($qrFilePath, $qrX, $qrY, $qrSize, $qrSize, 'PNG');
 
                 // SCAN label below QR
                 $pdf->SetFont('Arial', '', 5);
                 $pdf->SetTextColor(120, 120, 120);
-                $pdf->SetXY($qrStubX, $qrY + $qrSize + 1);
-                $pdf->Cell($qrStubW, 3, 'SCAN CHECK-IN', 0, 0, 'C');
+                $pdf->SetXY($qrAreaX, $qrY + $qrSize + 1);
+                $pdf->Cell($qrAreaW, 3, 'SCAN CHECK-IN', 0, 0, 'C');
             }
         }
 
