@@ -2570,12 +2570,13 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             mkdir($qrDir, 0775, true);
         }
 
-        // Template size: 80mm x 185mm (8cm x 18.5cm) for thermal printer
-        $pageW = 80;   // width in mm (8cm)
-        $pageH = 185;  // height in mm (18.5cm)
+        // Template size: 185mm x 80mm landscape (18.5cm x 8cm)
+        // Die-cut area: QR stub di kanan, info di kiri
+        $pageW = 185;  // width in mm (18.5cm)
+        $pageH = 80;   // height in mm (8cm)
 
         $pdf = new \App\Libraries\BoardingPassPDF(
-            'P',  // Portrait orientation
+            'L',  // Landscape
             'mm',
             [$pageW, $pageH]
         );
@@ -2599,206 +2600,171 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
 
             try {
                 $writer = new \Endroid\QrCode\Writer\PngWriter();
-
                 $qrCode = \Endroid\QrCode\QrCode::create($qrContent)
                     ->setEncoding(new \Endroid\QrCode\Encoding\Encoding('UTF-8'))
                     ->setSize(300)
                     ->setMargin(8)
                     ->setForegroundColor(new \Endroid\QrCode\Color\Color(0, 0, 0))
                     ->setBackgroundColor(new \Endroid\QrCode\Color\Color(255, 255, 255));
-
                 $writer->write($qrCode)->saveToFile($qrFilePath);
-
                 $qrFiles[] = $qrFilePath;
-
             } catch (\Exception $e) {
                 $qrFilePath = null;
             }
 
             // ── New page ────────────────────────────────────────
             $pdf->AddPage();
-
-            // Portrait layout 80mm x 185mm - single column vertical
             $pdf->SetTextColor(0, 0, 0);
-            
-            $cy = 10;  // current Y position
-            $leftMargin = 8;
-            $contentWidth = $pageW - 16;  // 64mm content width
 
-            // ── Header: NAMA Marine ──────────────────────────────
-            $pdf->SetFont('Arial', 'B', 12);
-            $pdf->SetXY($leftMargin, $cy);
-            $pdf->Cell($contentWidth, 6, 'NAMA Marine', 0, 1, 'C');
-            $cy += 10;
+            // ── Layout constants ──────────────────────────────────
+            // Left info area: x=0 to 130mm
+            // Die-cut line: x=130mm
+            // Right QR stub: x=130mm to 185mm (55mm wide)
+            $infoW    = 128;   // info area width
+            $cutX     = 130;   // die-cut line X position
+            $qrStubX  = 132;   // QR stub start X (2mm after cut)
+            $qrStubW  = $pageW - $qrStubX - 2;  // ~51mm
 
-            // ── Boat Name ────────────────────────────────────────
-            $pdf->SetFont('Arial', 'B', 10);
-            $pdf->SetXY($leftMargin, $cy);
-            $pdf->Cell($contentWidth, 5, $boatName, 0, 1, 'C');
-            $cy += 8;
+            $margin   = 6;
+            $cy       = 5;
 
-            // Divider line
-            $pdf->SetDrawColor(200, 200, 200);
+            // ── Dotted cut line ───────────────────────────────────
+            $pdf->SetDrawColor(180, 180, 180);
             $pdf->SetLineWidth(0.3);
-            $pdf->Line($leftMargin + 10, $cy, $pageW - $leftMargin - 10, $cy);
+            $pdf->DottedLine($cutX, 3, $cutX, $pageH - 3);
+
+            // Scissors text
+            $pdf->SetFont('Arial', '', 5);
+            $pdf->SetTextColor(180, 180, 180);
+            $pdf->SetXY($cutX - 3, $pageH / 2 - 2);
+            $pdf->Cell(6, 3, '✂', 0, 0, 'C');
+            $pdf->SetTextColor(0, 0, 0);
+
+            // ── LEFT: Info area ───────────────────────────────────
+
+            // Header: NAMA Marine + Boat
+            $pdf->SetFont('Arial', 'B', 9);
+            $pdf->SetXY($margin, $cy);
+            $pdf->Cell($infoW - $margin * 2, 5, 'NAMA Marine  —  ' . strtoupper($boatName), 0, 1, 'L');
             $cy += 6;
 
-            // ── GRUP ─────────────────────────────────────────────
-            $pdf->SetFont('Arial', '', 7);
-            $pdf->SetTextColor(100, 100, 100);
-            $pdf->SetXY($leftMargin, $cy);
-            $pdf->Cell($contentWidth, 3, 'GRUP', 0, 1, 'L');
-            $cy += 4;
-            
-            $pdf->SetFont('Arial', 'B', 9);
-            $pdf->SetTextColor(0, 0, 0);
-            $pdf->SetXY($leftMargin, $cy);
-            $pdf->Cell($contentWidth, 5, $groupName, 0, 1, 'L');
-            $cy += 8;
+            // Divider
+            $pdf->SetDrawColor(200, 200, 200);
+            $pdf->SetLineWidth(0.2);
+            $pdf->Line($margin, $cy, $infoW - $margin, $cy);
+            $cy += 3;
 
-            // ── PENUMPANG ────────────────────────────────────────
-            $pdf->SetFont('Arial', '', 7);
-            $pdf->SetTextColor(100, 100, 100);
-            $pdf->SetXY($leftMargin, $cy);
-            $pdf->Cell($contentWidth, 3, 'PENUMPANG', 0, 1, 'L');
-            $cy += 4;
-            
-            $pdf->SetFont('Arial', 'B', 9);
-            $pdf->SetTextColor(0, 0, 0);
-            $pdf->SetXY($leftMargin, $cy);
-            $pdf->Cell($contentWidth, 5, $passengerName, 0, 1, 'L');
-            $cy += 8;
+            // Row 1: GRUP | PENUMPANG
+            $colW = ($infoW - $margin * 2 - 4) / 2;
+            $col2 = $margin + $colW + 4;
 
-            // ── DATE & TIME (side by side) ───────────────────────
-            $pdf->SetFont('Arial', '', 7);
-            $pdf->SetTextColor(100, 100, 100);
-            $pdf->SetXY($leftMargin, $cy);
-            $pdf->Cell($contentWidth / 2, 3, 'TANGGAL', 0, 0, 'L');
-            $pdf->SetXY($leftMargin + $contentWidth / 2, $cy);
-            $pdf->Cell($contentWidth / 2, 3, 'JAM', 0, 1, 'L');
-            $cy += 4;
-            
-            $pdf->SetFont('Arial', '', 8);
+            $pdf->SetFont('Arial', '', 5);
+            $pdf->SetTextColor(130, 130, 130);
+            $pdf->SetXY($margin, $cy);
+            $pdf->Cell($colW, 3, 'GRUP', 0, 0, 'L');
+            $pdf->SetXY($col2, $cy);
+            $pdf->Cell($colW, 3, 'PENUMPANG', 0, 1, 'L');
+            $cy += 3;
+
+            $pdf->SetFont('Arial', 'B', 7.5);
             $pdf->SetTextColor(0, 0, 0);
-            $pdf->SetXY($leftMargin, $cy);
-            $pdf->Cell($contentWidth / 2, 4, $formattedDate, 0, 0, 'L');
-            $pdf->SetXY($leftMargin + $contentWidth / 2, $cy);
-            $pdf->Cell($contentWidth / 2, 4, $boardingTime, 0, 1, 'L');
+            $pdf->SetXY($margin, $cy);
+            $pdf->Cell($colW, 4, $groupName, 0, 0, 'L');
+            $pdf->SetXY($col2, $cy);
+            $pdf->Cell($colW, 4, $passengerName, 0, 1, 'L');
+            $cy += 6;
+
+            // Row 2: TANGGAL | JAM
+            $pdf->SetFont('Arial', '', 5);
+            $pdf->SetTextColor(130, 130, 130);
+            $pdf->SetXY($margin, $cy);
+            $pdf->Cell($colW, 3, 'TANGGAL', 0, 0, 'L');
+            $pdf->SetXY($col2, $cy);
+            $pdf->Cell($colW, 3, 'JAM', 0, 1, 'L');
+            $cy += 3;
+
+            $pdf->SetFont('Arial', '', 7);
+            $pdf->SetTextColor(0, 0, 0);
+            $pdf->SetXY($margin, $cy);
+            $pdf->Cell($colW, 4, $formattedDate, 0, 0, 'L');
+            $pdf->SetXY($col2, $cy);
+            $pdf->Cell($colW, 4, $boardingTime, 0, 1, 'L');
+            $cy += 6;
+
+            // Row 3: DARI | TUJUAN
+            $pdf->SetFont('Arial', '', 5);
+            $pdf->SetTextColor(130, 130, 130);
+            $pdf->SetXY($margin, $cy);
+            $pdf->Cell($colW, 3, 'DARI', 0, 0, 'L');
+            $pdf->SetXY($col2, $cy);
+            $pdf->Cell($colW, 3, 'TUJUAN', 0, 1, 'L');
+            $cy += 3;
+
+            $pdf->SetFont('Arial', '', 7);
+            $pdf->SetTextColor(0, 0, 0);
+            $pdf->SetXY($margin, $cy);
+            $pdf->Cell($colW, 4, strtoupper($origin), 0, 0, 'L');
+            $pdf->SetXY($col2, $cy);
+            $pdf->Cell($colW, 4, strtoupper($destination), 0, 1, 'L');
             $cy += 7;
 
-            // ── ROUTE (DARI - TUJUAN) ────────────────────────────
-            $pdf->SetFont('Arial', '', 7);
-            $pdf->SetTextColor(100, 100, 100);
-            $pdf->SetXY($leftMargin, $cy);
-            $pdf->Cell($contentWidth / 2, 3, 'DARI', 0, 0, 'L');
-            $pdf->SetXY($leftMargin + $contentWidth / 2, $cy);
-            $pdf->Cell($contentWidth / 2, 3, 'TUJUAN', 0, 1, 'L');
-            $cy += 4;
-            
-            $pdf->SetFont('Arial', '', 8);
-            $pdf->SetTextColor(0, 0, 0);
-            $pdf->SetXY($leftMargin, $cy);
-            $pdf->Cell($contentWidth / 2, 4, $origin, 0, 0, 'L');
-            $pdf->SetXY($leftMargin + $contentWidth / 2, $cy);
-            $pdf->Cell($contentWidth / 2, 4, $destination, 0, 1, 'L');
-            $cy += 10;
+            // Row 4: SEAT (large) | STATUS + TIKET
+            $pdf->SetFont('Arial', '', 5);
+            $pdf->SetTextColor(130, 130, 130);
+            $pdf->SetXY($margin, $cy);
+            $pdf->Cell($colW, 3, 'KURSI', 0, 0, 'L');
+            $pdf->SetXY($col2, $cy);
+            $pdf->Cell($colW, 3, 'STATUS', 0, 1, 'L');
+            $cy += 3;
 
-            // ── SEAT NUMBER (Large, centered) ────────────────────
-            $pdf->SetFont('Arial', 'B', 24);
+            $pdf->SetFont('Arial', 'B', 16);
             $pdf->SetTextColor(0, 0, 0);
-            $pdf->SetXY($leftMargin, $cy);
-            $pdf->Cell($contentWidth, 12, 'SEAT ' . $seatNumber, 0, 1, 'C');
-            $cy += 16;
+            $pdf->SetXY($margin, $cy);
+            $pdf->Cell($colW, 8, $seatNumber, 0, 0, 'L');
 
-            // ── TICKET CODE ──────────────────────────────────────
-            $pdf->SetFont('Arial', '', 7);
-            $pdf->SetTextColor(100, 100, 100);
-            $pdf->SetXY($leftMargin, $cy);
-            $pdf->Cell($contentWidth, 3, 'TIKET', 0, 1, 'C');
+            $pdf->SetFont('Arial', 'B', 7);
+            $pdf->SetXY($col2, $cy);
+            $pdf->Cell($colW, 4, $ket, 0, 1, 'L');
             $cy += 4;
-            
-            $pdf->SetFont('Arial', '', 7);
-            $pdf->SetTextColor(0, 0, 0);
-            
-            // Manual text wrapping: max 20 chars per line for portrait
-            $maxCharsPerLine = 20;
+
+            // Ticket code (small, under STATUS)
+            $maxCharsPerLine = 18;
             if (strlen($ticketCode) > $maxCharsPerLine) {
                 $wrapped = wordwrap($ticketCode, $maxCharsPerLine, "\n", true);
                 $ticketLines = explode("\n", $wrapped);
             } else {
                 $ticketLines = [$ticketCode];
             }
-            
-            $lineHeight = 3.5;
+            $pdf->SetFont('Arial', '', 5.5);
+            $pdf->SetTextColor(80, 80, 80);
+            $ticketY = $cy;
             foreach (array_slice($ticketLines, 0, 2) as $line) {
-                $pdf->SetXY($leftMargin, $cy);
-                $pdf->Cell($contentWidth, $lineHeight, trim($line), 0, 1, 'C');
-                $cy += $lineHeight;
+                $pdf->SetXY($col2, $ticketY);
+                $pdf->Cell($colW, 3, trim($line), 0, 1, 'L');
+                $ticketY += 3;
             }
-            $cy += 5;
 
-            // ── STATUS ───────────────────────────────────────────
-            $pdf->SetFont('Arial', '', 7);
-            $pdf->SetTextColor(100, 100, 100);
-            $pdf->SetXY($leftMargin, $cy);
-            $pdf->Cell($contentWidth, 3, 'STATUS', 0, 1, 'C');
-            $cy += 4;
-            
-            $pdf->SetFont('Arial', 'B', 9);
-            $pdf->SetTextColor(0, 0, 0);
-            $pdf->SetXY($leftMargin, $cy);
-            $pdf->Cell($contentWidth, 5, $ket, 0, 1, 'C');
-            $cy += 8;
-
-            // ── Nahkoda (footer of info section) ─────────────────
+            // Captain footer
             if ($captainName) {
-                $pdf->SetFont('Arial', '', 6);
-                $pdf->SetTextColor(80, 80, 80);
-                $pdf->SetXY($leftMargin, $cy);
-                $pdf->Cell($contentWidth, 3, 'Nahkoda: ' . $captainName, 0, 1, 'C');
+                $pdf->SetFont('Arial', '', 5);
+                $pdf->SetTextColor(150, 150, 150);
+                $pdf->SetXY($margin, $pageH - 7);
+                $pdf->Cell($infoW - $margin * 2, 3, 'Nahkoda: ' . $captainName, 0, 0, 'L');
             }
 
-            // ── CUT LINE at 130mm ────────────────────────────────
-            $cutY = 130;
-            $pdf->SetDrawColor(180, 180, 180);
-            $pdf->SetLineWidth(0.3);
-            $pdf->DottedLine($leftMargin, $cutY, $pageW - $leftMargin, $cutY);
-            
-            // Scissors icon text
-            $pdf->SetFont('ZapfDingbats', '', 8);
-            $pdf->SetTextColor(150, 150, 150);
-            $pdf->SetXY($leftMargin, $cutY - 3);
-            $pdf->Cell(10, 3, chr(33), 0, 0, 'L');  // scissors symbol
-            $pdf->SetFont('Arial', '', 6);
-            $pdf->SetTextColor(150, 150, 150);
-            $pdf->SetXY($leftMargin + 8, $cutY - 2);
-            $pdf->Cell($contentWidth - 8, 3, 'CUT HERE', 0, 0, 'L');
-
-            // ── QR STUB SECTION (130mm - 185mm = 55mm) ───────────
-            $stubY = $cutY + 5;  // start 5mm after cut line
-
-            // QR Code - centered in stub area
+            // ── RIGHT: QR Stub area ───────────────────────────────
             if ($qrFilePath && file_exists($qrFilePath)) {
-                $qrSize = 40;  // 40mm QR (fits in 55mm stub with margins)
-                $qrX    = ($pageW - $qrSize) / 2;  // center horizontally
-                $qrY    = $stubY + 2;
+                // QR size: fit in stub width with margins
+                $qrSize = min($qrStubW - 4, $pageH - 14);  // ~47mm
+                $qrX    = $qrStubX + ($qrStubW - $qrSize) / 2;  // center in stub
+                $qrY    = ($pageH - $qrSize) / 2;               // center vertically
                 $pdf->Image($qrFilePath, $qrX, $qrY, $qrSize, $qrSize, 'PNG');
 
                 // SCAN label below QR
-                $pdf->SetFont('Arial', '', 6);
+                $pdf->SetFont('Arial', '', 5);
                 $pdf->SetTextColor(120, 120, 120);
-                $pdf->SetXY($leftMargin, $qrY + $qrSize + 2);
-                $pdf->Cell($contentWidth, 3, 'SCAN CHECK-IN', 0, 1, 'C');
-                
-                // Ticket code below scan label
-                $pdf->SetFont('Arial', 'B', 7);
-                $pdf->SetTextColor(0, 0, 0);
-                $ticketPrintY = $qrY + $qrSize + 6;
-                foreach (array_slice($ticketLines, 0, 2) as $line) {
-                    $pdf->SetXY($leftMargin, $ticketPrintY);
-                    $pdf->Cell($contentWidth, 3.5, trim($line), 0, 1, 'C');
-                    $ticketPrintY += 3.5;
-                }
+                $pdf->SetXY($qrStubX, $qrY + $qrSize + 1);
+                $pdf->Cell($qrStubW, 3, 'SCAN CHECK-IN', 0, 0, 'C');
             }
         }
 
