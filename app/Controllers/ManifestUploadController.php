@@ -2575,9 +2575,8 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         $pageW = 80;
 
         // Pre-calculate page height:
-        // Title(13) + info rows(14+12+12+12+12=62) + divider(5) + QR section(~45) + padding(8) = ~133mm
-        // Add extra for long names that wrap
-        $pageH = 145;  // will be trimmed to actual content height
+        // Title(13) + info rows(14+12+12+12+12=62) + divider(5) + QR section(~55) + padding(5) = ~150mm
+        $pageH = 160;
 
         $pdf = new \App\Libraries\BoardingPassPDF(
             'P',
@@ -2753,11 +2752,13 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
                 $noteY = $bottomY + 8;
             }
 
-            // Safety notes — cukup 3 saja agar muat di sisi QR (35mm height)
+            // Safety notes — 5 notes sesuai referensi
             $safetyNotes = [
-                'Follow crew safety instructions.',
-                'Late passengers will not be accommodated.',
-                'Ticket non-transferable & non-refundable.',
+                'PLEASE FOLLOW ALL SAFETY INSTRUCTIONS FROM OUR CREW.',
+                'LATE PASSENGERS WILL NOT BE ACCOMMODATED AND THE BOAT WILL DEPART AS SCHEDULED.',
+                'DEPARTURE TIMES MAY CHANGE DUE TO WEATHER AND SEA CONDITIONS.',
+                'KEEP YOUR BELONGINGS SECURE AT ALL TIMES.',
+                'TICKET IS NON-TRANSFERABLE AND NON-REFUNDABLE.',
             ];
 
             $pdf->SetFont('Arial', '', 4.5);
