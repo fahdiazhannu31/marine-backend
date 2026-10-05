@@ -2724,52 +2724,73 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             $cy += 5;
 
             // ══════════════════════════════════════════
-            // BOTTOM: QR LEFT + NAMA Marine + Notes RIGHT
+            // BOTTOM: QR LEFT + Logo & Notes RIGHT
             // ══════════════════════════════════════════
             $qrSize = 35;  // 35mm QR
             $notesX = $margin + $qrSize + 4;
             $notesW = $contentW - $qrSize - 4;
+            $bottomY = $cy;
 
-            // QR Code
+            // QR Code (left)
             if ($qrFilePath && file_exists($qrFilePath)) {
-                $pdf->Image($qrFilePath, $margin, $cy, $qrSize, $qrSize, 'PNG');
+                $pdf->Image($qrFilePath, $margin, $bottomY, $qrSize, $qrSize, 'PNG');
             }
 
-            // NAMA Marine logo text (right of QR)
-            $pdf->SetFont('Arial', 'B', 9);
-            $pdf->SetTextColor(0, 0, 0);
-            $pdf->SetXY($notesX, $cy);
-            $pdf->Cell($notesW, 5, 'NAMA', 0, 1, 'L');
-            $pdf->SetFont('Arial', '', 7);
-            $pdf->SetXY($notesX, $cy + 5);
-            $pdf->Cell($notesW, 4, 'MARINE', 0, 1, 'L');
+            // NAMA Marine Logo (right, top)
+            $logoPath = FCPATH . 'assets/nama-marine-logo.png';
+            if (file_exists($logoPath)) {
+                $pdf->Image($logoPath, $notesX, $bottomY, 22, 0, 'PNG');
+                $noteY = $bottomY + 14;
+            } else {
+                // Fallback text logo
+                $pdf->SetFont('Arial', 'B', 10);
+                $pdf->SetTextColor(0, 0, 0);
+                $pdf->SetXY($notesX, $bottomY);
+                $pdf->Cell($notesW, 5, 'NAMA', 0, 1, 'L');
+                $pdf->SetFont('Arial', '', 7);
+                $pdf->SetXY($notesX, $bottomY + 5);
+                $pdf->Cell($notesW, 4, 'MARINE', 0, 1, 'L');
+                $noteY = $bottomY + 12;
+            }
 
-            // Safety notes
-            $notes = [
-                'PLEASE FOLLOW ALL SAFETY INSTRUCTIONS FROM OUR CREW.',
-                'LATE PASSENGERS WILL NOT BE ACCOMMODATED AND THE BOAT WILL DEPART AS SCHEDULED.',
-                'DEPARTURE TIMES MAY CHANGE DUE TO WEATHER AND SEA CONDITIONS.',
-                'KEEP YOUR BELONGINGS SECURE AT ALL TIMES.',
-                'TICKET IS NON-TRANSFERABLE AND NON REFUNDABLE.',
+            // Safety notes - fixed line height, no overlap
+            $safetyNotes = [
+                'Please follow all safety instructions from our crew.',
+                'Late passengers will not be accommodated and the boat will depart as scheduled.',
+                'Departure times may change due to weather and sea conditions.',
+                'Keep your belongings secure at all times.',
+                'Ticket is non-transferable and non refundable.',
             ];
 
-            $noteY = $cy + 12;
-            $pdf->SetFont('Arial', '', 5);
+            $pdf->SetFont('Arial', '', 4.5);
             $pdf->SetTextColor(60, 60, 60);
-            foreach ($notes as $note) {
-                $pdf->SetXY($notesX, $noteY);
-                $pdf->MultiCell($notesW, 3.2, $note, 0, 'L');
-                $noteY += 3.2 * ceil(strlen($note) / 38) + 1;
-            }
+            $lineH = 3.0;
 
-            $cy += $qrSize + 4;
+            foreach ($safetyNotes as $note) {
+                // Calculate lines needed
+                $words = explode(' ', $note);
+                $currentLine = '';
+                $lines = [];
+                foreach ($words as $word) {
+                    $test = $currentLine ? $currentLine . ' ' . $word : $word;
+                    $pdf->SetFont('Arial', '', 4.5);
+                    if ($pdf->GetStringWidth($test) <= $notesW) {
+                        $currentLine = $test;
+                    } else {
+                        if ($currentLine) $lines[] = $currentLine;
+                        $currentLine = $word;
+                    }
+                }
+                if ($currentLine) $lines[] = $currentLine;
 
-            // Nahkoda footer (if available)
-            if ($captainName) {
-                $pdf->SetFont('Arial', '', 5);
-                $pdf->SetTextColor(150, 150, 150);
-                $pdf->SetXY($margin, $cy);
-                $pdf->Cell($contentW, 3, 'Nahkoda: ' . $captainName, 0, 1, 'C');
+                foreach ($lines as $line) {
+                    if ($noteY < $pageH - 3) {
+                        $pdf->SetXY($notesX, $noteY);
+                        $pdf->Cell($notesW, $lineH, $line, 0, 1, 'L');
+                        $noteY += $lineH;
+                    }
+                }
+                $noteY += 1.5; // gap between notes
             }
         }
 
