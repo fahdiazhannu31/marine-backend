@@ -2570,10 +2570,14 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             mkdir($qrDir, 0775, true);
         }
 
-        // ── PDF: 80mm wide, ~230mm tall (Epson TM-T82X-II thermal receipt printer)
-        // 80mm roll, continuous paper - portrait
+        // ── PDF: 80mm wide, height dynamic per ticket (Epson TM-T82X-II)
+        // Estimated height calculated based on content, avoid blank space at bottom
         $pageW = 80;
-        $pageH = 230;  // tall enough for all content + QR + safety notes
+
+        // Pre-calculate page height:
+        // Title(13) + info rows(14+12+12+12+12=62) + divider(5) + QR section(~45) + padding(8) = ~133mm
+        // Add extra for long names that wrap
+        $pageH = 145;  // will be trimmed to actual content height
 
         $pdf = new \App\Libraries\BoardingPassPDF(
             'P',
@@ -2726,9 +2730,9 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             // ══════════════════════════════════════════
             // BOTTOM: QR LEFT + Logo & Notes RIGHT
             // ══════════════════════════════════════════
-            $qrSize = 35;  // 35mm QR
-            $notesX = $margin + $qrSize + 4;
-            $notesW = $contentW - $qrSize - 4;
+            $qrSize  = 35;   // 35mm QR
+            $notesX  = $margin + $qrSize + 4;
+            $notesW  = $contentW - $qrSize - 4;
             $bottomY = $cy;
 
             // QR Code (left)
@@ -2740,26 +2744,20 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             $logoPath = FCPATH . 'assets/nama-marine-logo.png';
             if (file_exists($logoPath)) {
                 $pdf->Image($logoPath, $notesX, $bottomY, 22, 0, 'PNG');
-                $noteY = $bottomY + 14;
+                $noteY = $bottomY + 13;
             } else {
-                // Fallback text logo
-                $pdf->SetFont('Arial', 'B', 10);
+                $pdf->SetFont('Arial', 'B', 9);
                 $pdf->SetTextColor(0, 0, 0);
                 $pdf->SetXY($notesX, $bottomY);
-                $pdf->Cell($notesW, 5, 'NAMA', 0, 1, 'L');
-                $pdf->SetFont('Arial', '', 7);
-                $pdf->SetXY($notesX, $bottomY + 5);
-                $pdf->Cell($notesW, 4, 'MARINE', 0, 1, 'L');
-                $noteY = $bottomY + 12;
+                $pdf->Cell($notesW, 5, 'NAMA MARINE', 0, 1, 'L');
+                $noteY = $bottomY + 8;
             }
 
-            // Safety notes - fixed line height, no overlap
+            // Safety notes — cukup 3 saja agar muat di sisi QR (35mm height)
             $safetyNotes = [
-                'Please follow all safety instructions from our crew.',
-                'Late passengers will not be accommodated and the boat will depart as scheduled.',
-                'Departure times may change due to weather and sea conditions.',
-                'Keep your belongings secure at all times.',
-                'Ticket is non-transferable and non refundable.',
+                'Follow crew safety instructions.',
+                'Late passengers will not be accommodated.',
+                'Ticket non-transferable & non-refundable.',
             ];
 
             $pdf->SetFont('Arial', '', 4.5);
@@ -2767,13 +2765,12 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             $lineH = 3.0;
 
             foreach ($safetyNotes as $note) {
-                // Calculate lines needed
+                // Manual word wrap
                 $words = explode(' ', $note);
                 $currentLine = '';
                 $lines = [];
                 foreach ($words as $word) {
                     $test = $currentLine ? $currentLine . ' ' . $word : $word;
-                    $pdf->SetFont('Arial', '', 4.5);
                     if ($pdf->GetStringWidth($test) <= $notesW) {
                         $currentLine = $test;
                     } else {
@@ -2784,14 +2781,15 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
                 if ($currentLine) $lines[] = $currentLine;
 
                 foreach ($lines as $line) {
-                    if ($noteY < $pageH - 3) {
-                        $pdf->SetXY($notesX, $noteY);
-                        $pdf->Cell($notesW, $lineH, $line, 0, 1, 'L');
-                        $noteY += $lineH;
-                    }
+                    $pdf->SetXY($notesX, $noteY);
+                    $pdf->Cell($notesW, $lineH, $line, 0, 1, 'L');
+                    $noteY += $lineH;
                 }
-                $noteY += 1.5; // gap between notes
+                $noteY += 1.5;
             }
+
+            // Final page height = bottom of QR + small padding
+            // (PDF is already sized to 145mm which should be enough)
         }
 
         // ── Clean up temporary QR files ──────────────────────────
