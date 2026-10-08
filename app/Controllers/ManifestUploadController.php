@@ -3839,11 +3839,18 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             // Generate QR PNG file for attachment
             $qrContent  = $groupQrData['qr_content'] ?? null;
             $qrFile     = null;
+            log_message('info', "=== QR ATTACH DEBUG [{$groupName}] ===");
+            log_message('info', "qr_content: " . ($qrContent ?: 'NULL'));
             if ($qrContent) {
                 try {
                     $qrDir = WRITEPATH . 'uploads/qr_codes/email/';
-                    if (!is_dir($qrDir)) @mkdir($qrDir, 0775, true);
+                    log_message('info', "qrDir: {$qrDir}, exists: " . (is_dir($qrDir) ? 'yes' : 'no'));
+                    if (!is_dir($qrDir)) {
+                        $mkResult = @mkdir($qrDir, 0775, true);
+                        log_message('info', "mkdir result: " . ($mkResult ? 'ok' : 'FAILED'));
+                    }
                     $qrFile = $qrDir . 'grp_' . md5($qrContent) . '.png';
+                    log_message('info', "qrFile path: {$qrFile}, exists: " . (file_exists($qrFile) ? 'yes' : 'no'));
                     if (!file_exists($qrFile)) {
                         $writer = new \Endroid\QrCode\Writer\PngWriter();
                         $qrCode = \Endroid\QrCode\QrCode::create($qrContent)
@@ -3853,12 +3860,14 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
                             ->setForegroundColor(new \Endroid\QrCode\Color\Color(0, 0, 0))
                             ->setBackgroundColor(new \Endroid\QrCode\Color\Color(255, 255, 255));
                         $writer->write($qrCode)->saveToFile($qrFile);
+                        log_message('info', "QR saved: " . (file_exists($qrFile) ? 'YES' : 'FAILED'));
                     }
                 } catch (\Exception $e) {
-                    log_message('warning', "Failed to generate QR for {$groupName}: " . $e->getMessage());
+                    log_message('error', "QR generation FAILED for {$groupName}: " . $e->getMessage());
                     $qrFile = null;
                 }
             }
+            log_message('info', "Will attach: " . ($qrFile && file_exists($qrFile) ? $qrFile : 'NO FILE'));
 
             // Compose email
             $emailSubject = "Boarding Pass QR Code - {$groupName}";
