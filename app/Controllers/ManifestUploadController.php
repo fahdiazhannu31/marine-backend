@@ -4174,7 +4174,10 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             ->get()
             ->getResultArray();
 
-        // Group tickets by group_name and collect first email + member info
+        // Get group_emails override from request (sent by frontend from loaded tickets)
+        $groupEmailsOverride = $body['group_emails'] ?? [];
+
+        // Group tickets by group_name and collect email + member info
         $groupContactMap = [];
         foreach ($tickets as $t) {
             $grp = $t['group_name'] ?? '__solo__';
@@ -4182,12 +4185,16 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
                 $groupContactMap[$grp] = [
                     'group_name' => $grp,
                     'lead_name'  => $t['passenger_name'],
-                    'email'      => $t['email'],  // Store email from ticket
+                    'email'      => null,
                     'members'    => [],
                 ];
             }
-            // Use first email found in group if not already set
-            if (!$groupContactMap[$grp]['email'] && $t['email']) {
+            // Priority 1: email from request override (frontend built from loaded tickets)
+            if (!$groupContactMap[$grp]['email'] && !empty($groupEmailsOverride[$grp])) {
+                $groupContactMap[$grp]['email'] = $groupEmailsOverride[$grp];
+            }
+            // Priority 2: email from manifest_tickets DB
+            if (!$groupContactMap[$grp]['email'] && !empty($t['email'])) {
                 $groupContactMap[$grp]['email'] = $t['email'];
             }
             $groupContactMap[$grp]['members'][] = $t['passenger_name'];
