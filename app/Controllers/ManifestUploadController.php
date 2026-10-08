@@ -3836,32 +3836,9 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
                 continue;
             }
 
-            // Compose email
+            // Compose email - QR image embedded inline in body (no attachment)
             $emailSubject = "Boarding Pass QR Code - {$groupName}";
             $emailBody = $this->buildGroupQrEmailBody($groupInfo, $groupQrData, $upload);
-
-            // Generate QR PNG for attachment
-            $qrContent   = $groupQrData['qr_content'] ?? null;
-            $qrTempFile  = null;
-            if ($qrContent) {
-                try {
-                    $qrDir = WRITEPATH . 'uploads/qr_codes/';
-                    if (!is_dir($qrDir)) @mkdir($qrDir, 0775, true);
-                    $qrTempFile = $qrDir . 'email_qr_' . uniqid() . '.png';
-
-                    $writer = new \Endroid\QrCode\Writer\PngWriter();
-                    $qrCode = \Endroid\QrCode\QrCode::create($qrContent)
-                        ->setEncoding(new \Endroid\QrCode\Encoding\Encoding('UTF-8'))
-                        ->setSize(400)
-                        ->setMargin(12)
-                        ->setForegroundColor(new \Endroid\QrCode\Color\Color(0, 0, 0))
-                        ->setBackgroundColor(new \Endroid\QrCode\Color\Color(255, 255, 255));
-                    $writer->write($qrCode)->saveToFile($qrTempFile);
-                } catch (\Exception $e) {
-                    log_message('warning', "Failed to generate QR attachment for {$groupName}: " . $e->getMessage());
-                    $qrTempFile = null;
-                }
-            }
 
             $emailService->setTo($groupEmail);
             $emailService->setFrom(
@@ -3871,14 +3848,6 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             $emailService->setSubject($emailSubject);
             $emailService->setMessage($emailBody);
             $emailService->setMailType('html');
-
-            // Attach QR PNG if generated
-            if ($qrTempFile && file_exists($qrTempFile)) {
-                $emailService->attach(
-                    $qrTempFile,
-                    'boarding-pass-qr-' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $groupName) . '.png'
-                );
-            }
 
             // Try to send
             try {
@@ -3938,6 +3907,15 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         $boardingPassUrl = $qrData['qr_content'] ?? null;
         $hasUrl = $boardingPassUrl && str_starts_with($boardingPassUrl, 'http');
 
+        // QR image inline (from stored data URL)
+        $qrDataUrl = $qrData['qr_data_url'] ?? null;
+        $qrImgHtml = $qrDataUrl
+            ? "<div style='text-align:center;margin:24px 0;'>
+                <img src='{$qrDataUrl}' width='200' height='200' alt='QR Code Boarding Pass' style='border:1px solid #eee;padding:8px;border-radius:4px;'/>
+                <p style='font-size:12px;color:#888;margin:4px 0 0;'>Scan QR ini untuk boarding pass semua anggota grup</p>
+               </div>"
+            : '';
+
         $btnHtml = $hasUrl
             ? "<a href=\"{$boardingPassUrl}\" style=\"display:inline-block;background:#F2881C;color:#fff;padding:14px 32px;text-decoration:none;border-radius:6px;font-size:16px;font-weight:bold;\">Buka Boarding Pass</a>"
             : "<p style='color:#888'>Link boarding pass tidak tersedia.</p>";
@@ -3974,6 +3952,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             <div style="text-align:center;margin:32px 0;">
                 {$btnHtml}
             </div>
+            {$qrImgHtml}
             {$urlText}
             <hr style="border:none;border-top:1px solid #eee;margin:24px 0;">
             <p style="font-size:13px;color:#666;line-height:1.8;">
