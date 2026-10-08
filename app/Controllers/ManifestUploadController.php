@@ -4208,27 +4208,27 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         $emailConfig = new \Config\Email();
 
         foreach ($groupContactMap as $groupName => $groupInfo) {
-            // Create brand-new Email instance per iteration — guarantees no attachment carryover
             $emailService = new \CodeIgniter\Email\Email($emailConfig);
+
             // Get QR for this group
             $groupQrData = $groupQrs[$groupName] ?? null;
             if (!$groupQrData) {
-                $failedGroups[] = $groupName;
+                $failedGroups[] = $groupName . ' [no_qr]';
                 continue;
             }
 
-            // Get email from group info (now from manifest)
+            // Get email
             $groupEmail = $groupInfo['email'] ?? null;
             if (!$groupEmail) {
-                log_message('warning', "No email found for group: {$groupName}");
-                $failedGroups[] = $groupName;
+                $failedGroups[] = $groupName . ' [no_email]';
+                log_message('warning', "No email for group: {$groupName}");
                 continue;
             }
 
-            // Validate email format
+            // Validate email
             if (!filter_var($groupEmail, FILTER_VALIDATE_EMAIL)) {
-                log_message('warning', "Invalid email for group {$groupName}: {$groupEmail}");
-                $failedGroups[] = $groupName;
+                $failedGroups[] = $groupName . ' [invalid_email:' . $groupEmail . ']';
+                log_message('warning', "Invalid email for {$groupName}: {$groupEmail}");
                 continue;
             }
 
@@ -4303,11 +4303,18 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             ->where('id', $uploadId)
             ->update(['qr_emails_sent_at' => date('Y-m-d H:i:s')]);
 
+        // Debug: collect email map for response
+        $debugEmailMap = [];
+        foreach ($groupContactMap as $grp => $info) {
+            $debugEmailMap[$grp] = $info['email'] ?? null;
+        }
+
         return $this->jsonResponse([
-            'message' => "Sent {$sentCount} emails",
-            'sent_count' => $sentCount,
-            'total_groups' => count($groupContactMap),
+            'message'       => "Sent {$sentCount} emails",
+            'sent_count'    => $sentCount,
+            'total_groups'  => count($groupContactMap),
             'failed_groups' => $failedGroups,
+            'debug_emails'  => $debugEmailMap,  // remove after debugging
         ]);
     }
 
