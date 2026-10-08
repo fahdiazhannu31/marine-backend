@@ -3836,7 +3836,31 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
                 continue;
             }
 
-            // Compose email - QR image embedded inline in body (no attachment)
+            // Generate QR PNG file for attachment
+            $qrContent  = $groupQrData['qr_content'] ?? null;
+            $qrFile     = null;
+            if ($qrContent) {
+                try {
+                    $qrDir = WRITEPATH . 'uploads/qr_codes/email/';
+                    if (!is_dir($qrDir)) @mkdir($qrDir, 0775, true);
+                    $qrFile = $qrDir . 'grp_' . md5($qrContent) . '.png';
+                    if (!file_exists($qrFile)) {
+                        $writer = new \Endroid\QrCode\Writer\PngWriter();
+                        $qrCode = \Endroid\QrCode\QrCode::create($qrContent)
+                            ->setEncoding(new \Endroid\QrCode\Encoding\Encoding('UTF-8'))
+                            ->setSize(400)
+                            ->setMargin(10)
+                            ->setForegroundColor(new \Endroid\QrCode\Color\Color(0, 0, 0))
+                            ->setBackgroundColor(new \Endroid\QrCode\Color\Color(255, 255, 255));
+                        $writer->write($qrCode)->saveToFile($qrFile);
+                    }
+                } catch (\Exception $e) {
+                    log_message('warning', "Failed to generate QR for {$groupName}: " . $e->getMessage());
+                    $qrFile = null;
+                }
+            }
+
+            // Compose email
             $emailSubject = "Boarding Pass QR Code - {$groupName}";
             $emailBody = $this->buildGroupQrEmailBody($groupInfo, $groupQrData, $upload);
 
@@ -3848,6 +3872,12 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             $emailService->setSubject($emailSubject);
             $emailService->setMessage($emailBody);
             $emailService->setMailType('html');
+
+            // Attach QR PNG
+            if ($qrFile && file_exists($qrFile)) {
+                $attachName = 'QR-BoardingPass-' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $groupName) . '.png';
+                $emailService->attach($qrFile, $attachName);
+            }
 
             // Try to send
             try {
@@ -3918,71 +3948,20 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             ? date('d F Y', strtotime($upload['trip_date']))
             : 'TBA';
 
-        // QR content is the boarding pass URL — use as direct clickable link
-        $boardingPassUrl = $qrData['qr_content'] ?? null;
-        $hasUrl = $boardingPassUrl && str_starts_with($boardingPassUrl, 'http');
-
-        // Generate QR image file for email (base64 data URLs blocked by most email clients)
-        $qrImgHtml = '';
-        $qrContent = $qrData['qr_content'] ?? null;
-        if ($qrContent) {
-            try {
-                $qrDir  = WRITEPATH . 'uploads/qr_codes/email/';
-                if (!is_dir($qrDir)) @mkdir($qrDir, 0775, true);
-                $qrFile = $qrDir . 'grp_' . md5($qrContent) . '.png';
-
-                if (!file_exists($qrFile)) {
-                    $writer = new \Endroid\QrCode\Writer\PngWriter();
-                    $qrCode = \Endroid\QrCode\QrCode::create($qrContent)
-                        ->setEncoding(new \Endroid\QrCode\Encoding\Encoding('UTF-8'))
-                        ->setSize(300)
-                        ->setMargin(8)
-                        ->setForegroundColor(new \Endroid\QrCode\Color\Color(0, 0, 0))
-                        ->setBackgroundColor(new \Endroid\QrCode\Color\Color(255, 255, 255));
-                    $writer->write($qrCode)->saveToFile($qrFile);
-                }
-
-                // Build public URL for this QR image
-                $baseUrl   = rtrim(env('app.baseURL', 'https://namamarine.cloud'), '/');
-                $qrPubPath = 'uploads/qr_codes/email/grp_' . md5($qrContent) . '.png';
-                $qrImgUrl  = $baseUrl . '/api/admin/manifest/qr-image/' . md5($qrContent);
-
-                // Fallback: serve directly from writable (if publicly accessible)
-                $qrImgHtml = "<div style='text-align:center;margin:24px 0;'>
-                    <img src='{$qrImgUrl}' width='200' height='200' alt='QR Code Boarding Pass'
-                         style='border:1px solid #eee;padding:8px;border-radius:4px;display:block;margin:0 auto;'/>
-                    <p style='font-size:12px;color:#888;margin:6px 0 0;'>Scan QR ini untuk boarding pass semua anggota grup</p>
-                </div>";
-            } catch (\Exception $e) {
-                log_message('warning', 'Failed to generate QR for email: ' . $e->getMessage());
-            }
-        }
-
-        $btnHtml = $hasUrl
-            ? "<a href=\"{$boardingPassUrl}\" style=\"display:inline-block;background:#F2881C;color:#fff;padding:14px 32px;text-decoration:none;border-radius:6px;font-size:16px;font-weight:bold;\">Buka Boarding Pass</a>"
-            : "<p style='color:#888'>Link boarding pass tidak tersedia.</p>";
-
-        $urlText = $hasUrl
-            ? "<p style='font-size:12px;color:#888;word-break:break-all;margin-top:8px;'>Link: <a href=\"{$boardingPassUrl}\" style='color:#F2881C;'>{$boardingPassUrl}</a></p>"
-            : '';
-
-        // Header text instead of logo
-        $logoHtml = "<span style='font-size:22px;font-weight:800;color:#fff;letter-spacing:-0.5px;'>NAMA Marine</span>";
-
         return <<<HTML
 <!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"></head>
 <body style="margin:0;padding:0;font-family:Arial,sans-serif;background:#f5f5f5;">
     <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:8px;overflow:hidden;">
-        <div style="background:#F2881C;color:#fff;padding:24px 32px;text-align:center;">
-            {$logoHtml}
-            <p style="margin:4px 0 0;opacity:.85;font-size:14px;">Boarding Pass — Self Service</p>
+        <div style="background:#1800AD;color:#fff;padding:24px 32px;text-align:center;">
+            <span style="font-size:22px;font-weight:800;color:#fff;letter-spacing:-0.5px;">NAMA Marine</span>
+            <p style="margin:4px 0 0;opacity:.85;font-size:14px;">Boarding Pass — Check-in</p>
         </div>
         <div style="padding:32px;">
             <p style="font-size:16px;margin-top:0;">Halo <strong>{$leadName}</strong>,</p>
-            <p>Boarding pass Anda sudah siap! Klik tombol di bawah untuk melihat dan mengunduh boarding pass semua anggota grup.</p>
-            <div style="background:#fff8f0;border-left:4px solid #F2881C;padding:16px;margin:20px 0;border-radius:4px;">
+            <p style="color:#444;">Boarding pass Anda sudah siap. Silakan tunjukkan QR code terlampir kepada petugas di <strong>meja check-in</strong> untuk mengambil boarding pass Anda.</p>
+            <div style="background:#f0f4ff;border-left:4px solid #1800AD;padding:16px;margin:20px 0;border-radius:4px;">
                 <table style="width:100%;font-size:14px;border-collapse:collapse;">
                     <tr><td style="padding:4px 8px;color:#888;width:120px;">Grup</td><td style="padding:4px 8px;font-weight:bold;">{$groupName}</td></tr>
                     <tr><td style="padding:4px 8px;color:#888;">Penumpang</td><td style="padding:4px 8px;">{$membersList}</td></tr>
@@ -3991,18 +3970,13 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
                     <tr><td style="padding:4px 8px;color:#888;">Tanggal</td><td style="padding:4px 8px;font-weight:bold;">{$tripDate}</td></tr>
                 </table>
             </div>
-            <div style="text-align:center;margin:32px 0;">
-                {$btnHtml}
-            </div>
-            {$qrImgHtml}
-            {$urlText}
             <hr style="border:none;border-top:1px solid #eee;margin:24px 0;">
             <p style="font-size:13px;color:#666;line-height:1.8;">
-                <strong>Cara pakai:</strong><br>
-                1. Klik tombol di atas<br>
-                2. Halaman boarding pass akan terbuka di browser<br>
-                3. Tap nama penumpang untuk unduh boarding pass masing-masing<br>
-                4. Tunjukkan boarding pass ke petugas di dermaga
+                <strong>Cara pengambilan boarding pass:</strong><br>
+                1. Datang ke meja check-in sebelum keberangkatan<br>
+                2. Tunjukkan QR code di lampiran email ini kepada petugas<br>
+                3. Petugas akan mencetak boarding pass untuk semua anggota grup<br>
+                4. Simpan boarding pass Anda hingga keberangkatan
             </p>
         </div>
         <div style="background:#f9f9f9;padding:16px 32px;text-align:center;border-top:1px solid #eee;">
