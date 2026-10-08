@@ -3887,6 +3887,25 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         ]);
     }
 
+    // ─── Serve QR image for email (public, no auth needed) ──────────────────
+    public function serveQrImage(string $hash = '')
+    {
+        if (!preg_match('/^[a-f0-9]{32}$/i', $hash)) {
+            return $this->response->setStatusCode(404)->setBody('Not found');
+        }
+
+        $qrFile = WRITEPATH . 'uploads/qr_codes/email/grp_' . $hash . '.png';
+
+        if (!file_exists($qrFile)) {
+            return $this->response->setStatusCode(404)->setBody('QR not found');
+        }
+
+        return $this->response
+            ->setHeader('Content-Type', 'image/png')
+            ->setHeader('Cache-Control', 'public, max-age=86400')
+            ->setBody(file_get_contents($qrFile));
+    }
+
     private function buildGroupQrEmailBody(array $groupInfo, array $qrData, array $upload): string
     {
         $groupName   = $groupInfo['group_name'] ?? 'Group';
@@ -3903,14 +3922,41 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         $boardingPassUrl = $qrData['qr_content'] ?? null;
         $hasUrl = $boardingPassUrl && str_starts_with($boardingPassUrl, 'http');
 
-        // QR image inline (from stored data URL)
-        $qrDataUrl = $qrData['qr_data_url'] ?? null;
-        $qrImgHtml = $qrDataUrl
-            ? "<div style='text-align:center;margin:24px 0;'>
-                <img src='{$qrDataUrl}' width='200' height='200' alt='QR Code Boarding Pass' style='border:1px solid #eee;padding:8px;border-radius:4px;'/>
-                <p style='font-size:12px;color:#888;margin:4px 0 0;'>Scan QR ini untuk boarding pass semua anggota grup</p>
-               </div>"
-            : '';
+        // Generate QR image file for email (base64 data URLs blocked by most email clients)
+        $qrImgHtml = '';
+        $qrContent = $qrData['qr_content'] ?? null;
+        if ($qrContent) {
+            try {
+                $qrDir  = WRITEPATH . 'uploads/qr_codes/email/';
+                if (!is_dir($qrDir)) @mkdir($qrDir, 0775, true);
+                $qrFile = $qrDir . 'grp_' . md5($qrContent) . '.png';
+
+                if (!file_exists($qrFile)) {
+                    $writer = new \Endroid\QrCode\Writer\PngWriter();
+                    $qrCode = \Endroid\QrCode\QrCode::create($qrContent)
+                        ->setEncoding(new \Endroid\QrCode\Encoding\Encoding('UTF-8'))
+                        ->setSize(300)
+                        ->setMargin(8)
+                        ->setForegroundColor(new \Endroid\QrCode\Color\Color(0, 0, 0))
+                        ->setBackgroundColor(new \Endroid\QrCode\Color\Color(255, 255, 255));
+                    $writer->write($qrCode)->saveToFile($qrFile);
+                }
+
+                // Build public URL for this QR image
+                $baseUrl   = rtrim(env('app.baseURL', 'https://namamarine.cloud'), '/');
+                $qrPubPath = 'uploads/qr_codes/email/grp_' . md5($qrContent) . '.png';
+                $qrImgUrl  = $baseUrl . '/api/admin/manifest/qr-image/' . md5($qrContent);
+
+                // Fallback: serve directly from writable (if publicly accessible)
+                $qrImgHtml = "<div style='text-align:center;margin:24px 0;'>
+                    <img src='{$qrImgUrl}' width='200' height='200' alt='QR Code Boarding Pass'
+                         style='border:1px solid #eee;padding:8px;border-radius:4px;display:block;margin:0 auto;'/>
+                    <p style='font-size:12px;color:#888;margin:6px 0 0;'>Scan QR ini untuk boarding pass semua anggota grup</p>
+                </div>";
+            } catch (\Exception $e) {
+                log_message('warning', 'Failed to generate QR for email: ' . $e->getMessage());
+            }
+        }
 
         $btnHtml = $hasUrl
             ? "<a href=\"{$boardingPassUrl}\" style=\"display:inline-block;background:#F2881C;color:#fff;padding:14px 32px;text-decoration:none;border-radius:6px;font-size:16px;font-weight:bold;\">Buka Boarding Pass</a>"

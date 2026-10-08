@@ -163,6 +163,7 @@ $routes->get('/api/admin/manifest/boarding-pass-template/(:num)',    'ManifestUp
 $routes->post('/api/admin/manifest/boarding-pass-self-service',      'ManifestUploadController::boardingPassSelfService');
 $routes->get('/api/admin/manifest/group-qr-codes/(:num)',            'ManifestUploadController::getGroupQrCodes/$1');
 $routes->post('/api/admin/manifest/send-group-qr-emails',            'ManifestUploadController::sendGroupQrEmails');
+$routes->get('/api/admin/manifest/qr-image/(:segment)',              'ManifestUploadController::serveQrImage/$1');
 $routes->get('/api/admin/manifest/boats',                            'ManifestUploadController::listBoats');
 $routes->put('/api/admin/manifest/boats/(:num)/crew',                'ManifestUploadController::updateBoatCrew/$1');
 $routes->put('/api/admin/manifest/tickets/(:num)',                   'ManifestUploadController::updateTicket/$1');
