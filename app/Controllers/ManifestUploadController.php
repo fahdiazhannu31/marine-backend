@@ -4204,11 +4204,21 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         $sentCount = 0;
         $failedGroups = [];
 
-        // Load email config directly from Config\Email class (not .env)
-        $emailConfig = new \Config\Email();
-
         foreach ($groupContactMap as $groupName => $groupInfo) {
-            $emailService = new \CodeIgniter\Email\Email($emailConfig);
+            // Build fresh email instance with Brevo SMTP credentials from .env
+            $emailService = \Config\Services::email();
+            $emailService->initialize([
+                'protocol'     => 'smtp',
+                'SMTPHost'     => env('email.SMTPHost', 'smtp-relay.brevo.com'),
+                'SMTPUser'     => env('email.SMTPUser', ''),
+                'SMTPPass'     => env('email.SMTPPass', ''),
+                'SMTPPort'     => (int) env('email.SMTPPort', 587),
+                'SMTPCrypto'   => env('email.SMTPCrypto', 'tls'),
+                'SMTPTimeout'  => 15,
+                'mailType'     => 'html',
+                'charset'      => 'UTF-8',
+                'wordWrap'     => true,
+            ]);
 
             // Get QR for this group
             $groupQrData = $groupQrs[$groupName] ?? null;
@@ -4261,8 +4271,8 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
 
             $emailService->setTo($groupEmail);
             $emailService->setFrom(
-                $emailConfig->fromEmail ?: 'noreply@namamarine.cloud',
-                $emailConfig->fromName  ?: 'NAMA Marine'
+                env('email.fromEmail', 'noreply@namamarine.cloud'),
+                env('email.fromName', 'NAMA Marine')
             );
             $emailService->setSubject($emailSubject);
             $emailService->setMessage($emailBody);

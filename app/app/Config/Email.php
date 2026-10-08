@@ -39,4 +39,3 @@ class Email extends BaseConfig
         if ($v = env('email.fromEmail')) $this->fromEmail = $v;
         if ($v = env('email.fromName')) $this->fromName = $v;
     }
-}
