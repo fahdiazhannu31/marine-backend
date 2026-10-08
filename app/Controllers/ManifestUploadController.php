@@ -3799,8 +3799,9 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         $failedGroups = [];
 
         foreach ($groupContactMap as $groupName => $groupInfo) {
-            // Build fresh email instance with Brevo SMTP credentials from .env
-            $emailService = \Config\Services::email();
+            // Create BRAND NEW instance each iteration (not singleton Services::email())
+            // This prevents attachment carryover from previous iterations
+            $emailService = new \CodeIgniter\Email\Email();
             $emailService->initialize([
                 'protocol'     => 'smtp',
                 'SMTPHost'     => env('email.SMTPHost', 'smtp-relay.brevo.com'),
