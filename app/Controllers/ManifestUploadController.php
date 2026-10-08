@@ -3864,10 +3864,6 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
                 $failedGroups[] = $groupName;
             }
 
-            // Cleanup temp QR file
-            if ($qrTempFile && file_exists($qrTempFile)) {
-                @unlink($qrTempFile);
-            }
             // No clear() needed — fresh $emailService created per iteration
         }
 
