@@ -18,6 +18,7 @@ class ManifestTicketModel extends Model
         'package', 'pax_count', 'notes', 'age', 'gender', 'domicile',
         'id_passport', 'seat_id', 'seat_number', 'ticket_code',
         'checked_in', 'checked_in_at', 'cancelled',
+        'email',  // email for QR blast
     ];
     protected $useTimestamps = true;
     protected $createdField  = 'created_at';
