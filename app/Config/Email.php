@@ -33,12 +33,13 @@ class Email extends BaseConfig
     /**
      * SMTP Username
      */
-    public string $SMTPUser = 'peoplewhoeatdirt@gmail.com';
+    public string $SMTPUser = '';  // Set via .env: email.SMTPUser
 
     /**
-     * SMTP Password
+     * SMTP Password - use Google App Password (not regular password)
+     * Generate at: https://myaccount.google.com/apppasswords
      */
-    public string $SMTPPass = 'janu123456';
+    public string $SMTPPass = '';  // Set via .env: email.SMTPPass
 
     /**
      * SMTP Port
