@@ -26,30 +26,32 @@ class Email extends BaseConfig
     public string $mailPath = '/usr/sbin/sendmail';
 
     /**
-     * SMTP Server Hostname
+     * SMTP Server Hostname - Brevo (Sendinblue)
      */
-    public string $SMTPHost = 'smtp.gmail.com';
+    public string $SMTPHost = 'smtp-relay.brevo.com';
 
     /**
-     * SMTP Username
+     * SMTP Username - Brevo: gunakan email akun Brevo Anda
+     * Set via .env: email.SMTPUser
      */
-    public string $SMTPUser = '';  // Set via .env: email.SMTPUser
+    public string $SMTPUser = '';
 
     /**
-     * SMTP Password - use Google App Password (not regular password)
-     * Generate at: https://myaccount.google.com/apppasswords
+     * SMTP Password - Brevo: gunakan SMTP Key dari dashboard Brevo
+     * Dashboard Brevo → SMTP & API → SMTP → Generate new SMTP key
+     * Set via .env: email.SMTPPass
      */
-    public string $SMTPPass = '';  // Set via .env: email.SMTPPass
+    public string $SMTPPass = '';
 
     /**
-     * SMTP Port
+     * SMTP Port - Brevo menggunakan port 587 (TLS) atau 465 (SSL)
      */
     public int $SMTPPort = 587;
 
     /**
      * SMTP Timeout (in seconds)
      */
-    public int $SMTPTimeout = 5;
+    public int $SMTPTimeout = 10;
 
     /**
      * Enable persistent SMTP connections
@@ -57,11 +59,7 @@ class Email extends BaseConfig
     public bool $SMTPKeepAlive = false;
 
     /**
-     * SMTP Encryption.
-     *
-     * @var string '', 'tls' or 'ssl'. 'tls' will issue a STARTTLS command
-     *             to the server. 'ssl' means implicit SSL. Connection on port
-     *             465 should set this to ''.
+     * SMTP Encryption - Brevo pakai TLS di port 587
      */
     public string $SMTPCrypto = 'tls';
 
