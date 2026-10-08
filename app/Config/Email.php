@@ -6,115 +6,51 @@ use CodeIgniter\Config\BaseConfig;
 
 class Email extends BaseConfig
 {
-    public string $fromEmail  = '';
-    public string $fromName   = '';
-    public string $recipients = '';
+    public string $fromEmail    = '';
+    public string $fromName     = '';
+    public string $recipients   = '';
+    public string $userAgent    = 'CodeIgniter';
+    public string $protocol     = 'smtp';
+    public string $mailPath     = '/usr/sbin/sendmail';
+    public string $SMTPHost     = 'smtp-relay.brevo.com';
+    public string $SMTPUser     = '';
+    public string $SMTPPass     = '';
+    public int    $SMTPPort     = 587;
+    public int    $SMTPTimeout  = 10;
+    public bool   $SMTPKeepAlive = false;
+    public string $SMTPCrypto   = 'tls';
+    public bool   $wordWrap     = true;
+    public int    $wrapChars    = 76;
+    public string $mailType     = 'html';
+    public string $charset      = 'UTF-8';
+    public bool   $validate     = false;
+    public int    $priority     = 3;
+    public string $CRLF         = "\r\n";
+    public string $newline      = "\r\n";
+    public bool   $BCCBatchMode = false;
+    public int    $BCCBatchSize = 200;
+    public bool   $DSN          = false;
 
-    /**
-     * The "user agent"
-     */
-    public string $userAgent = 'CodeIgniter';
+    public function __construct()
+    {
+        parent::__construct();
 
-    /**
-     * The mail sending protocol: mail, sendmail, smtp
-     */
-    public string $protocol = 'smtp';
+        // Explicitly load SMTP config from .env
+        // CodeIgniter doesn't auto-map camelCase SMTP* properties from .env
+        $host     = env('email.SMTPHost');
+        $user     = env('email.SMTPUser');
+        $pass     = env('email.SMTPPass');
+        $port     = env('email.SMTPPort');
+        $crypto   = env('email.SMTPCrypto');
+        $from     = env('email.fromEmail');
+        $fromName = env('email.fromName');
 
-    /**
-     * The server path to Sendmail.
-     */
-    public string $mailPath = '/usr/sbin/sendmail';
-
-    /**
-     * SMTP Server Hostname - Brevo (Sendinblue)
-     */
-    public string $SMTPHost = 'smtp-relay.brevo.com';
-
-    /**
-     * SMTP Username - Brevo: gunakan email akun Brevo Anda
-     * Set via .env: email.SMTPUser
-     */
-    public string $SMTPUser = '';
-
-    /**
-     * SMTP Password - Brevo: gunakan SMTP Key dari dashboard Brevo
-     * Dashboard Brevo → SMTP & API → SMTP → Generate new SMTP key
-     * Set via .env: email.SMTPPass
-     */
-    public string $SMTPPass = '';
-
-    /**
-     * SMTP Port - Brevo menggunakan port 587 (TLS) atau 465 (SSL)
-     */
-    public int $SMTPPort = 587;
-
-    /**
-     * SMTP Timeout (in seconds)
-     */
-    public int $SMTPTimeout = 10;
-
-    /**
-     * Enable persistent SMTP connections
-     */
-    public bool $SMTPKeepAlive = false;
-
-    /**
-     * SMTP Encryption - Brevo pakai TLS di port 587
-     */
-    public string $SMTPCrypto = 'tls';
-
-    /**
-     * Enable word-wrap
-     */
-    public bool $wordWrap = true;
-
-    /**
-     * Character count to wrap at
-     */
-    public int $wrapChars = 76;
-
-    /**
-     * Type of mail, either 'text' or 'html'
-     */
-    public string $mailType = 'html';
-
-    /**
-     * Character set (utf-8, iso-8859-1, etc.)
-     */
-    public string $charset = 'UTF-8';
-
-    /**
-     * Whether to validate the email address
-     */
-    public bool $validate = false;
-
-    /**
-     * Email Priority. 1 = highest. 5 = lowest. 3 = normal
-     */
-    public int $priority = 3;
-
-    /**
-     * Newline character. (Use “\r\n” to comply with RFC 822)
-     */
-    public string $CRLF = "\r\n";
-
-    /**
-     * Newline character. (Use “\r\n” to comply with RFC 822)
-     */
-    public string $newline = "\r\n";
-
-    /**
-     * Enable BCC Batch Mode.
-     */
-    public bool $BCCBatchMode = false;
-
-    /**
-     * Number of emails in each BCC batch
-     */
-    public int $BCCBatchSize = 200;
-
-    /**
-     * Enable notify message from server
-     */
-    public bool $DSN = false;
+        if ($host)     $this->SMTPHost   = $host;
+        if ($user)     $this->SMTPUser   = $user;
+        if ($pass)     $this->SMTPPass   = $pass;
+        if ($port)     $this->SMTPPort   = (int) $port;
+        if ($crypto)   $this->SMTPCrypto = $crypto;
+        if ($from)     $this->fromEmail  = $from;
+        if ($fromName) $this->fromName   = $fromName;
+    }
 }
