@@ -30,4 +30,13 @@ class Email extends BaseConfig
     public bool   $BCCBatchMode  = false;
     public int    $BCCBatchSize  = 200;
     public bool   $DSN           = false;
+
+    public function __construct()
+    {
+        parent::__construct();
+        if ($v = env('email.SMTPUser')) $this->SMTPUser = $v;
+        if ($v = env('email.SMTPPass')) $this->SMTPPass = $v;
+        if ($v = env('email.fromEmail')) $this->fromEmail = $v;
+        if ($v = env('email.fromName')) $this->fromName = $v;
+    }
 }
