@@ -2515,16 +2515,19 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             return $this->jsonResponse(['error' => 'Upload not found.'], 404);
         }
 
-        $seats = $db->table('seat')
-            ->where('boat_id', $upload['boat_id'])
-            ->orderBy('CAST(seat_number AS UNSIGNED)', 'ASC')
-            ->orderBy('seat_number', 'ASC')
+        $seats = $db->table('seat s')
+            ->select('s.*, b.boat_name')
+            ->join('boat b', 'b.id = s.boat_id', 'left')
+            ->where('s.boat_id', $upload['boat_id'])
+            ->orderBy('CAST(s.seat_number AS UNSIGNED)', 'ASC')
+            ->orderBy('s.seat_number', 'ASC')
             ->get()
             ->getResultArray();
 
         return $this->jsonResponse([
-            'boat_id' => $upload['boat_id'],
-            'seats' => $seats,
+            'boat_id'   => $upload['boat_id'],
+            'boat_name' => $upload['boat_name'] ?? null,
+            'seats'     => $seats,
         ]);
     }
 
