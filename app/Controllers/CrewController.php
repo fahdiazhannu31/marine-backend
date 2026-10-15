@@ -53,19 +53,38 @@ class CrewController extends ApiController
     {
         if (!$this->isAdminUser()) return $this->jsonResponse(['error' => 'Forbidden.'], 403);
 
-        $db   = \Config\Database::connect();
-        $role = $this->request->getVar('role');
+        $db     = \Config\Database::connect();
+        $role   = $this->request->getVar('role');
+        $search = trim($this->request->getVar('search') ?? '');
+        $page   = max(1, (int)($this->request->getVar('page') ?? 1));
+        $limit  = max(1, min(100, (int)($this->request->getVar('limit') ?? 20)));
+        $offset = ($page - 1) * $limit;
 
+        // Base query
         $qb = $db->table('crew c')
             ->select('c.*')
             ->orderBy('c.role', 'ASC')
             ->orderBy('c.name', 'ASC');
 
+        // Filter by role
         if ($role) {
             $qb->where('c.role', $role);
         }
 
-        $rows = $qb->get()->getResultArray();
+        // Search by name, phone, or ID number
+        if ($search !== '') {
+            $qb->groupStart()
+                ->like('c.name', $search, 'both')
+                ->orLike('c.phone', $search, 'both')
+                ->orLike('c.id_number', $search, 'both')
+                ->groupEnd();
+        }
+
+        // Count total for pagination
+        $total = $qb->countAllResults(false); // false = don't reset query
+
+        // Fetch paginated results
+        $rows = $qb->limit($limit, $offset)->get()->getResultArray();
 
         // Attach today's assignment if any (for display purposes only)
         $today = date('Y-m-d');
@@ -81,7 +100,15 @@ class CrewController extends ApiController
         }
         unset($row);
 
-        return $this->jsonResponse($rows);
+        return $this->jsonResponse([
+            'data'  => $rows,
+            'meta'  => [
+                'total'        => $total,
+                'page'         => $page,
+                'limit'        => $limit,
+                'total_pages'  => ceil($total / $limit),
+            ],
+        ]);
     }
 
     // GET /api/admin/crew/{id}
