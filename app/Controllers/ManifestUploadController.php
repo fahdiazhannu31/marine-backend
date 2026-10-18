@@ -214,8 +214,8 @@ class ManifestUploadController extends ApiController
         $allSeats = $db->table('seat')
             ->where('boat_id', $boatId)
             ->where('status !=', 'disabled')   // only skip permanently disabled seats
-            ->orderBy('CAST(seat_number AS UNSIGNED)', 'ASC')
-            ->orderBy('seat_number', 'ASC')
+            ->orderBy('CAST(seat_number AS UNSIGNED)', 'DESC')  // REVERSE: start from back rows
+            ->orderBy('seat_number', 'DESC')
             ->get()
             ->getResultArray();
 
@@ -2673,8 +2673,8 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         $allSeats = $db->table('seat')
             ->where('boat_id', $boatId)
             ->where('status !=', 'disabled')
-            ->orderBy('CAST(seat_number AS UNSIGNED)', 'ASC')
-            ->orderBy('seat_number', 'ASC')
+            ->orderBy('CAST(seat_number AS UNSIGNED)', 'DESC')  // REVERSE: start from back
+            ->orderBy('seat_number', 'DESC')
             ->get()->getResultArray();
 
         $availableSeats = array_values(array_filter($allSeats, function ($s) use ($takenSeatIds) {
