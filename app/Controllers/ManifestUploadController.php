@@ -874,16 +874,9 @@ class ManifestUploadController extends ApiController
         log_message('info', "=== END DEBUG ===");
 
         // ── 7. Auto-assign seats ──────────────────────────────────────
-        // Only assign seats to paying passengers (OVERNIGHT / DAY TRIP).
-        // STAFF, FOC, VENDOR get seats too if available, but are last priority.
-        $noSeatKets = ['STAFF', 'FOC', 'VENDOR']; // change to [] if they need seats too
-
+        // Auto-assign seats to ALL passengers including STAFF, FOC, VENDOR
         $grouped = [];
         foreach ($ticketRows as $t) {
-            // STAFF / FOC / VENDOR skip seat assignment
-            if (in_array(strtoupper($t['ket'] ?? ''), $noSeatKets, true)) {
-                continue;
-            }
             $grp = $t['group_name'] ?? '__solo__' . $t['_key'];
             if (!isset($grouped[$grp])) {
                 $grouped[$grp] = ['group_name' => $grp, 'passengers' => []];
