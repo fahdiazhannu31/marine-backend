@@ -2715,7 +2715,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             'total_passengers'    => count($passengers),
         ]);
     }
-            ], 422);
+
     // ═══════════════════════════════════════════
     // MANIFEST FINAL & EXPORT
     // ═══════════════════════════════════════════
