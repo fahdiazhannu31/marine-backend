@@ -194,35 +194,64 @@ class ManifestUploadController extends ApiController
      *  - Groups sit together (adjacent seats within the same row).
      *  - Seat order follows the natural order from the `seat` table
      *    (sorted by seat_number ASC).
-     *  - Already-booked seats (status='booked') are skipped.
+     *  - Seats already assigned to another manifest on the SAME trip_date
+     *    are skipped (per-date isolation, not global status flag).
      *  - If a full group can't fit in one row it wraps to the next
      *    available contiguous block.
      *
      * @param int     $boatId
-     * @param array[] $groups  [ ['group_name'=>..., 'passengers'=>[ticketRows]] ]
+     * @param array[] $groups   [ ['group_name'=>..., 'passengers'=>[ticketRows]] ]
+     * @param string  $tripDate  'Y-m-d' — used to scope seat availability per date
+     * @param int     $excludeUploadId  upload_id to exclude (for re-assign on same upload)
      * @return array           Map of ticket->seq_no => ['seat_id', 'seat_number']
      */
-    private function assignSeats(int $boatId, array $groups): array
+    private function assignSeats(int $boatId, array $groups, string $tripDate = '', int $excludeUploadId = 0): array
     {
         $db = \Config\Database::connect();
 
-        // Fetch all available seats for this boat, ordered naturally
-        $availableSeats = $db->table('seat')
+        // Fetch ALL seats for this boat (regardless of global status flag —
+        // we scope availability per trip_date using manifest_tickets instead)
+        $allSeats = $db->table('seat')
             ->where('boat_id', $boatId)
-            ->where('status', 'available')
-            ->orderBy('CAST(seat_number AS UNSIGNED)', 'ASC')   // numeric prefix
-            ->orderBy('seat_number', 'ASC')                     // then alpha suffix
+            ->where('status !=', 'disabled')   // only skip permanently disabled seats
+            ->orderBy('CAST(seat_number AS UNSIGNED)', 'ASC')
+            ->orderBy('seat_number', 'ASC')
             ->get()
             ->getResultArray();
 
+        // Find seat IDs already assigned to another manifest on the same trip_date
+        $takenSeatIds = [];
+        if ($tripDate) {
+            $takenQuery = $db->table('manifest_tickets')
+                ->select('seat_id')
+                ->where('trip_date', $tripDate)
+                ->where('boat_id', $boatId)
+                ->where('seat_id IS NOT NULL')
+                ->where('cancelled', 0);
+
+            if ($excludeUploadId > 0) {
+                $takenQuery->where('upload_id !=', $excludeUploadId);
+            }
+
+            $takenRows    = $takenQuery->get()->getResultArray();
+            $takenSeatIds = array_column($takenRows, 'seat_id');
+        }
+
+        // Filter to only seats not already taken on this date
+        $availableSeats = array_values(array_filter($allSeats, function ($s) use ($takenSeatIds) {
+            return !in_array((int)$s['id'], array_map('intval', $takenSeatIds), true);
+        }));
+
         // DEBUG: Log available seats count
         log_message('info', "=== SEAT ASSIGNMENT DEBUG ===");
-        log_message('info', "Boat ID: {$boatId}");
-        log_message('info', "Available seats found: " . count($availableSeats));
+        log_message('info', "Boat ID: {$boatId}, Trip Date: {$tripDate}");
+        log_message('info', "Total seats on boat: " . count($allSeats));
+        log_message('info', "Seats already taken on {$tripDate}: " . count($takenSeatIds));
+        log_message('info', "Available seats: " . count($availableSeats));
         log_message('info', "Groups to assign: " . count($groups));
 
         if (empty($availableSeats)) {
-            log_message('warning', "No available seats found for boat {$boatId}!");
+            log_message('warning', "No available seats found for boat {$boatId} on {$tripDate}!");
             return [];
         }
 
@@ -864,7 +893,7 @@ class ManifestUploadController extends ApiController
 
         $seatAssignments = [];
         if ($boatId) {
-            $seatAssignments = $this->assignSeats($boatId, array_values($grouped));
+            $seatAssignments = $this->assignSeats($boatId, array_values($grouped), $tripDate);
         }
 
         // ── 8. Create manifest_uploads row ───────────────────────────
@@ -948,13 +977,9 @@ class ManifestUploadController extends ApiController
 
         $ticketModel->bulkInsert($dbTicketRows);
 
-        // Mark assigned seats as booked in the seat table
-        $assignedSeatIds = array_column(array_values($seatAssignments), 'seat_id');
-        if (!empty($assignedSeatIds)) {
-            $db->table('seat')
-               ->whereIn('id', $assignedSeatIds)
-               ->update(['status' => 'booked']);
-        }
+        // NOTE: We intentionally do NOT set seat.status = 'booked' here.
+        // Seat availability is now scoped per trip_date via manifest_tickets,
+        // so the global status flag is no longer used for per-trip booking state.
 
         // ── 10. Generate group QR codes ──────────────────────────────
         // For RETURN manifests: try to reuse existing QR from DEPARTURE manifest
@@ -1566,10 +1591,7 @@ class ManifestUploadController extends ApiController
         $db->table('manifest_tickets')->insert($ticketData);
         $ticketId = $db->insertID();
 
-        // Mark seat as booked
-        if ($seatId) {
-            $db->table('seat')->where('id', $seatId)->update(['status' => 'booked']);
-        }
+        // No need to touch seat.status — availability is tracked per trip_date via manifest_tickets
 
         // Re-generate group QR codes so new passenger gets a QR
         try {
@@ -1633,24 +1655,8 @@ class ManifestUploadController extends ApiController
 
         $db = \Config\Database::connect();
         
-        // RELEASE BOOKED SEATS: get all seat_ids assigned to this manifest's tickets
-        $tickets = $db->table('manifest_tickets')
-            ->select('seat_id')
-            ->where('upload_id', $id)
-            ->where('seat_id IS NOT NULL')
-            ->get()
-            ->getResultArray();
-        
-        $seatIds = array_column($tickets, 'seat_id');
-        
-        // Update seats to available (only if they were booked)
-        if (!empty($seatIds)) {
-            $db->table('seat')
-                ->whereIn('id', $seatIds)
-                ->where('status', 'booked')
-                ->set(['status' => 'available'])
-                ->update();
-        }
+        // Tickets are scoped per upload_id — deleting tickets is sufficient
+        // to free up seats for the same trip_date. No need to touch seat.status.
         
         // Now delete tickets, baggage, crew assignments, and group checkins
         $db->table('manifest_tickets')->where('upload_id', $id)->delete();
@@ -2448,15 +2454,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
                 return $this->jsonResponse(['error' => 'Seat not found.'], 404);
             }
 
-            // Release old seat if it was assigned
-            if ($ticket['seat_id']) {
-                $db->table('seat')
-                   ->update(['status' => 'available'], ['id' => $ticket['seat_id']]);
-            }
-
-            // Mark new seat as booked
-            $db->table('seat')
-               ->update(['status' => 'booked'], ['id' => $newSeatId]);
+            // No need to touch seat.status — availability is tracked per trip_date via manifest_tickets
 
             $updates['seat_id'] = $newSeatId;
             $updates['seat_number'] = $newSeat['seat_number'];
@@ -2519,14 +2517,37 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             ->select('s.*, b.boat_name')
             ->join('boat b', 'b.id = s.boat_id', 'left')
             ->where('s.boat_id', $upload['boat_id'])
+            ->where('s.status !=', 'disabled')
             ->orderBy('CAST(s.seat_number AS UNSIGNED)', 'ASC')
             ->orderBy('s.seat_number', 'ASC')
             ->get()
             ->getResultArray();
 
+        // Find seat IDs already taken on the same trip_date by OTHER uploads
+        $tripDate = $upload['trip_date'] ?? '';
+        $takenSeatIds = [];
+        if ($tripDate) {
+            $takenRows = $db->table('manifest_tickets')
+                ->select('seat_id')
+                ->where('trip_date', $tripDate)
+                ->where('boat_id', $upload['boat_id'])
+                ->where('upload_id !=', $uploadId)
+                ->where('seat_id IS NOT NULL')
+                ->where('cancelled', 0)
+                ->get()->getResultArray();
+            $takenSeatIds = array_map('intval', array_column($takenRows, 'seat_id'));
+        }
+
+        // Mark each seat with availability status for the frontend
+        foreach ($seats as &$seat) {
+            $seat['available_on_date'] = !in_array((int)$seat['id'], $takenSeatIds, true);
+        }
+        unset($seat);
+
         return $this->jsonResponse([
             'boat_id'   => $upload['boat_id'],
             'boat_name' => $upload['boat_name'] ?? null,
+            'trip_date' => $tripDate,
             'seats'     => $seats,
         ]);
     }
@@ -2577,10 +2598,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
 
         // Release seat if assigned
         if (!empty($ticket['seat_id'])) {
-            $db->table('seat')
-                ->where('id', $ticket['seat_id'])
-                ->where('status', 'booked')
-                ->update(['status' => 'available']);
+            // No need to touch seat.status — availability is tracked per trip_date via manifest_tickets
         }
 
         $db->table('manifest_tickets')->where('id', $ticketId)->delete();
@@ -2603,33 +2621,17 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         }
 
         $db = \Config\Database::connect();
-        
+
         // Get upload info
-        $upload = $db->table('manifest_uploads')->find($uploadId);
+        $upload = $db->table('manifest_uploads')->where('id', $uploadId)->get()->getFirstRow('array');
         if (!$upload) {
             return $this->jsonResponse(['error' => 'Upload not found.'], 404);
         }
 
-        $boatId = (int) $upload['boat_id'];
+        $boatId   = (int) $upload['boat_id'];
+        $tripDate = $upload['trip_date'] ?? '';
 
-        // Count available seats
-        $availableCount = $db->table('seat')
-            ->where('boat_id', $boatId)
-            ->where('status', 'available')
-            ->countAllResults();
-
-        log_message('info', "Force assign seats - Boat ID: {$boatId}, Available seats: {$availableCount}");
-
-        if ($availableCount === 0) {
-            return $this->jsonResponse([
-                'error' => 'No available seats found',
-                'boat_id' => $boatId,
-                'available_seats' => 0,
-                'solution' => 'Run RUN_ME_FIRST.sql to generate seats'
-            ], 422);
-        }
-
-        // Get passengers that need seats
+        // Get passengers that need seats (unassigned, not cancelled)
         $passengers = $db->table('manifest_tickets')
             ->where('upload_id', $uploadId)
             ->where('cancelled', 0)
@@ -2640,62 +2642,80 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
 
         if (empty($passengers)) {
             return $this->jsonResponse([
-                'message' => 'All passengers already have seats assigned',
-                'upload_id' => $uploadId
+                'message'   => 'All passengers already have seats assigned',
+                'upload_id' => $uploadId,
             ]);
         }
 
-        // Get available seats ordered naturally
-        $availableSeats = $db->table('seat')
-            ->where('boat_id', $boatId)
-            ->where('status', 'available')
-            ->orderBy('CAST(REGEXP_REPLACE(seat_number, "[A-Z]+", "") AS UNSIGNED)', 'ASC')
-            ->orderBy('seat_number', 'ASC')
-            ->get()
-            ->getResultArray();
+        // Get seats taken by OTHER manifests on the same trip_date
+        $takenSeatIds = [];
+        if ($tripDate) {
+            $takenRows = $db->table('manifest_tickets')
+                ->select('seat_id')
+                ->where('trip_date', $tripDate)
+                ->where('boat_id', $boatId)
+                ->where('upload_id !=', $uploadId)
+                ->where('seat_id IS NOT NULL')
+                ->where('cancelled', 0)
+                ->get()->getResultArray();
+            $takenSeatIds = array_map('intval', array_column($takenRows, 'seat_id'));
+        }
 
-        log_message('info', "Force assign - Passengers needing seats: " . count($passengers) . ", Available: " . count($availableSeats));
+        // Also exclude seats already assigned within this upload
+        $alreadyInUpload = $db->table('manifest_tickets')
+            ->select('seat_id')
+            ->where('upload_id', $uploadId)
+            ->where('seat_id IS NOT NULL')
+            ->get()->getResultArray();
+        $takenSeatIds = array_merge($takenSeatIds, array_map('intval', array_column($alreadyInUpload, 'seat_id')));
+
+        // Get all seats for this boat (excluding disabled)
+        $allSeats = $db->table('seat')
+            ->where('boat_id', $boatId)
+            ->where('status !=', 'disabled')
+            ->orderBy('CAST(seat_number AS UNSIGNED)', 'ASC')
+            ->orderBy('seat_number', 'ASC')
+            ->get()->getResultArray();
+
+        $availableSeats = array_values(array_filter($allSeats, function ($s) use ($takenSeatIds) {
+            return !in_array((int)$s['id'], $takenSeatIds, true);
+        }));
+
+        log_message('info', "Force assign - Passengers needing seats: " . count($passengers) . ", Available on {$tripDate}: " . count($availableSeats));
+
+        if (empty($availableSeats)) {
+            return $this->jsonResponse([
+                'error'            => 'No available seats for this date',
+                'boat_id'          => $boatId,
+                'trip_date'        => $tripDate,
+                'available_seats'  => 0,
+            ]);
+        }
 
         // Assign seats sequentially
         $assigned = 0;
-        $seatIds = [];
-
         foreach ($passengers as $i => $passenger) {
-            if (!isset($availableSeats[$i])) {
-                break; // no more seats
-            }
-
+            if (!isset($availableSeats[$i])) break;
             $seat = $availableSeats[$i];
-            
-            // Update ticket
             $db->table('manifest_tickets')
                 ->where('id', $passenger['id'])
                 ->update([
-                    'seat_id' => $seat['id'],
-                    'seat_number' => $seat['seat_number']
+                    'seat_id'     => $seat['id'],
+                    'seat_number' => $seat['seat_number'],
                 ]);
-
-            $seatIds[] = $seat['id'];
             $assigned++;
-
-            log_message('info', "Assigned seat {$seat['seat_number']} to passenger {$passenger['passenger_name']} (seq {$passenger['seq_no']})");
-        }
-
-        // Mark seats as booked
-        if (!empty($seatIds)) {
-            $db->table('seat')
-                ->whereIn('id', $seatIds)
-                ->update(['status' => 'booked']);
+            log_message('info', "Assigned seat {$seat['seat_number']} to passenger {$passenger['passenger_name']}");
         }
 
         return $this->jsonResponse([
-            'message' => 'Seats assigned successfully',
-            'upload_id' => $uploadId,
+            'message'             => 'Seats assigned successfully',
+            'upload_id'           => $uploadId,
+            'trip_date'           => $tripDate,
             'passengers_assigned' => $assigned,
-            'total_passengers' => count($passengers)
+            'total_passengers'    => count($passengers),
         ]);
     }
-
+            ], 422);
     // ═══════════════════════════════════════════
     // MANIFEST FINAL & EXPORT
     // ═══════════════════════════════════════════
