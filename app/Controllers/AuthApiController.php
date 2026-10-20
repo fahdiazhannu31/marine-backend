@@ -104,19 +104,34 @@ class AuthApiController extends BaseController
             return $this->error('Email and password are required.');
         }
 
-        // Check if account is locked
+        // Check if account is locked — skip lockout for admin users
         $attemptTracker = new \App\Libraries\LoginAttemptTracker();
-        
+
         if ($attemptTracker->isLocked($email)) {
-            $remainingTime = $attemptTracker->getRemainingLockoutTime($email);
-            $minutes = ceil($remainingTime / 60);
-            
-            log_message('warning', "Login attempt on locked account: {$email} from IP: " . $this->request->getIPAddress());
-            
-            return $this->error(
-                "Account temporarily locked due to too many failed attempts. Please try again in {$minutes} minute(s).",
-                423 // 423 Locked
-            );
+            // Check if the user is an admin — admins are never locked out
+            $userModel = new UserModel();
+            $existingUser = $userModel->where('email', $email)->first();
+            $isAdmin = false;
+            if ($existingUser) {
+                $groups = $existingUser->getRoles();
+                $isAdmin = in_array('admin', $groups);
+            }
+
+            if (!$isAdmin) {
+                $remainingTime = $attemptTracker->getRemainingLockoutTime($email);
+                $minutes = ceil($remainingTime / 60);
+
+                log_message('warning', "Login attempt on locked account: {$email} from IP: " . $this->request->getIPAddress());
+
+                return $this->error(
+                    "Account temporarily locked due to too many failed attempts. Please try again in {$minutes} minute(s).",
+                    423 // 423 Locked
+                );
+            }
+
+            // Admin: clear the lock silently and proceed
+            $attemptTracker->clearAttempts($email);
+            log_message('info', "Lockout bypassed for admin account: {$email}");
         }
 
         /** @var \Myth\Auth\Authentication\LocalAuthenticator $auth */
