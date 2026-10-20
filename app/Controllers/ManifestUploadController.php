@@ -2518,9 +2518,14 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
 
         // Find seat IDs already taken on the same trip_date by OTHER uploads
         $tripDate = $upload['trip_date'] ?? '';
+        // exclude_ticket_id: when editing a specific ticket, exclude it from "taken"
+        // so its current seat shows as available (not taken by itself)
+        $excludeTicketId = (int) ($this->request->getGet('exclude_ticket_id') ?? 0);
+
         $takenSeatIds = [];
         if ($tripDate) {
-            $takenRows = $db->table('manifest_tickets')
+            // 1. Seats taken by OTHER uploads on the same trip_date + boat
+            $takenFromOtherUploads = $db->table('manifest_tickets')
                 ->select('seat_id')
                 ->where('trip_date', $tripDate)
                 ->where('boat_id', $upload['boat_id'])
@@ -2528,7 +2533,22 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
                 ->where('seat_id IS NOT NULL')
                 ->where('cancelled', 0)
                 ->get()->getResultArray();
-            $takenSeatIds = array_map('intval', array_column($takenRows, 'seat_id'));
+
+            // 2. Seats taken by OTHER tickets in THIS upload
+            $qb = $db->table('manifest_tickets')
+                ->select('seat_id')
+                ->where('upload_id', $uploadId)
+                ->where('seat_id IS NOT NULL')
+                ->where('cancelled', 0);
+            if ($excludeTicketId > 0) {
+                $qb->where('id !=', $excludeTicketId);
+            }
+            $takenFromSameUpload = $qb->get()->getResultArray();
+
+            $takenSeatIds = array_unique(array_map('intval', array_column(
+                array_merge($takenFromOtherUploads, $takenFromSameUpload),
+                'seat_id'
+            )));
         }
 
         // Mark each seat with availability status for the frontend
