@@ -1403,6 +1403,22 @@ class ManifestUploadController extends ApiController
             'message'      => ucfirst($role) . " {$crew['name']} berhasil di-assign ke schedule." . (isset($newId) ? ' (data crew baru dibuat otomatis)' : ''),
         ];
     }
+    /**
+     * Sync total_pax in manifest_uploads to reflect current non-cancelled ticket count.
+     * Call this after any operation that adds, removes, or cancels tickets.
+     */
+    private function syncUploadPaxCount(int $uploadId): void
+    {
+        $db = \Config\Database::connect();
+        $row = $db->table('manifest_tickets')
+            ->where('upload_id', $uploadId)
+            ->where('cancelled', 0)
+            ->countAllResults();
+        $db->table('manifest_uploads')
+            ->where('id', $uploadId)
+            ->update(['total_pax' => $row]);
+    }
+
     private function getAuthUserId(): int
     {
         $authHeader = $this->request->getHeaderLine('Authorization');
@@ -1650,6 +1666,9 @@ class ManifestUploadController extends ApiController
         } catch (\Exception $e) {
             log_message('warning', 'Failed to regenerate group QR after manual add: ' . $e->getMessage());
         }
+
+        // Sync total_pax in manifest_uploads
+        $this->syncUploadPaxCount($uploadId);
 
         // Get inserted ticket with seat info
         $ticket = $db->table('manifest_tickets')
@@ -2526,6 +2545,11 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             $model->update($ticketId, $updates);
         }
 
+        // Sync total_pax if cancelled status changed
+        if (isset($updates['cancelled'])) {
+            $this->syncUploadPaxCount((int)$ticket['upload_id']);
+        }
+
         return $this->jsonResponse([
             'message' => 'Ticket updated.',
             'ticket_id' => $ticketId,
@@ -2632,6 +2656,9 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         $newStatus = $ticket['cancelled'] ? 0 : 1;
         $model->update($ticketId, ['cancelled' => $newStatus]);
 
+        // Sync total_pax
+        $this->syncUploadPaxCount((int)$ticket['upload_id']);
+
         return $this->jsonResponse([
             'message' => 'Ticket cancel status toggled.',
             'ticket_id' => $ticketId,
@@ -2662,6 +2689,9 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         }
 
         $db->table('manifest_tickets')->where('id', $ticketId)->delete();
+
+        // Sync total_pax
+        $this->syncUploadPaxCount((int)$ticket['upload_id']);
 
         return $this->jsonResponse([
             'message'   => 'Ticket deleted.',
