@@ -3407,17 +3407,41 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             // Old format: strip NAMA_MARINE_MANIFEST_ prefix
             $cleanCode = preg_replace('/^NAMA_MARINE_MANIFEST_/i', '', $code);
 
-            // Try: ticket_code, id, id_passport, group_name
+            // Try ticket_code first (individual boarding pass)
             $ticket = $db->table('manifest_tickets')
-                ->groupStart()
-                    ->where('ticket_code', $cleanCode)
-                    ->orWhere('id', (int)$cleanCode)
-                    ->orWhere('id_passport', $cleanCode)
-                    ->orWhere('group_name', $cleanCode)
-                ->groupEnd()
+                ->where('ticket_code', $cleanCode)
                 ->orderBy('id', 'DESC')
-                ->get()
-                ->getFirstRow('array');
+                ->get()->getFirstRow('array');
+
+            // Then try by id
+            if (!$ticket && is_numeric($cleanCode)) {
+                $ticket = $db->table('manifest_tickets')
+                    ->where('id', (int)$cleanCode)
+                    ->get()->getFirstRow('array');
+            }
+
+            // Then try by id_passport (NIK scan)
+            if (!$ticket) {
+                $ticket = $db->table('manifest_tickets')
+                    ->where('id_passport', $cleanCode)
+                    ->orderBy('id', 'DESC')
+                    ->get()->getFirstRow('array');
+            }
+
+            // LAST: group_name — only if nothing else matched AND this looks like a group QR
+            // (group QR codes are typically the group name string, not a ticket code)
+            // We only do this if $isGroupQr was NOT already set above
+            if (!$ticket && !$isGroupQr) {
+                $byGroup = $db->table('manifest_tickets')
+                    ->where('group_name', $cleanCode)
+                    ->where('cancelled', 0)
+                    ->orderBy('id', 'ASC')
+                    ->get()->getFirstRow('array');
+                if ($byGroup) {
+                    $ticket    = $byGroup;
+                    $isGroupQr = true; // treat as group scan
+                }
+            }
         }
 
         if (!$ticket) {
