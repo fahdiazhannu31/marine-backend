@@ -962,13 +962,25 @@ class ManifestUploadController extends ApiController
                 'id_passport'    => $t['id_passport'] ?? null,
                 'seat_id'        => $assignment['seat_id'] ?? null,
                 'seat_number'    => $assignment['seat_number'] ?? null,
-                'ticket_code'    => strtoupper('TKT-' . $uploadId . '-' . str_pad($t['seq_no'], 4, '0', STR_PAD_LEFT)),
+                'ticket_code'    => null, // set after insert using DB id for uniqueness
                 'checked_in'     => 0,
                 'cancelled'      => 0,
             ];
         }
 
         $ticketModel->bulkInsert($dbTicketRows);
+
+        // Update ticket_code using actual DB id (guarantees uniqueness)
+        // Format: TKT-{uploadId}-{id padded to 5 digits}
+        $insertedTickets = $db->table('manifest_tickets')
+            ->where('upload_id', $uploadId)
+            ->whereNull('ticket_code')
+            ->get()->getResultArray();
+        foreach ($insertedTickets as $row) {
+            $db->table('manifest_tickets')
+                ->where('id', $row['id'])
+                ->update(['ticket_code' => 'TKT-' . $uploadId . '-' . str_pad($row['id'], 5, '0', STR_PAD_LEFT)]);
+        }
 
         // NOTE: We intentionally do NOT set seat.status = 'booked' here.
         // Seat availability is now scoped per trip_date via manifest_tickets,
