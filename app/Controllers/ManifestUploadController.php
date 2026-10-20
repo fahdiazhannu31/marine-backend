@@ -1554,23 +1554,54 @@ class ManifestUploadController extends ApiController
         // Generate ticket_code
         $ticketCode = 'TKT-' . $uploadId . '-' . str_pad($nextSeq, 4, '0', STR_PAD_LEFT);
 
-        // Auto-assign seat if not specified
+        // Auto-assign seat if not specified — scope by trip_date like assignSeats()
         $seatNumber = null;
+        $tripDate   = $upload['trip_date'] ?? '';
         if (!$seatId) {
-            $availableSeat = $db->table('seat')
+            // Get seat IDs already taken on this trip_date + boat
+            $takenSeatIds = [];
+            if ($tripDate) {
+                $takenRows = $db->table('manifest_tickets')
+                    ->select('seat_id')
+                    ->where('trip_date', $tripDate)
+                    ->where('boat_id', $upload['boat_id'])
+                    ->where('seat_id IS NOT NULL')
+                    ->where('cancelled', 0)
+                    ->get()->getResultArray();
+                $takenSeatIds = array_map('intval', array_column($takenRows, 'seat_id'));
+            }
+
+            $allSeats = $db->table('seat')
                 ->where('boat_id', $upload['boat_id'])
-                ->where('status', 'available')
+                ->where('status !=', 'disabled')
                 ->orderBy('seat_number', 'ASC')
-                ->get()->getFirstRow('array');
-            
-            if ($availableSeat) {
-                $seatId     = $availableSeat['id'];
-                $seatNumber = $availableSeat['seat_number'];
+                ->get()->getResultArray();
+
+            foreach ($allSeats as $s) {
+                if (!in_array((int)$s['id'], $takenSeatIds, true)) {
+                    $seatId     = (int)$s['id'];
+                    $seatNumber = $s['seat_number'];
+                    break;
+                }
             }
         } else {
-            // Get seat_number for the provided seat_id
+            // Validate that provided seat_id is not already taken on this trip_date
+            $alreadyTaken = $db->table('manifest_tickets')
+                ->where('trip_date', $tripDate)
+                ->where('boat_id', $upload['boat_id'])
+                ->where('seat_id', $seatId)
+                ->where('cancelled', 0)
+                ->get()->getFirstRow('array');
+
+            if ($alreadyTaken) {
+                return $this->jsonResponse(['error' => 'Seat sudah dipakai penumpang lain pada tanggal ini.'], 409);
+            }
+
             $seat = $db->table('seat')->where('id', $seatId)->get()->getFirstRow('array');
-            $seatNumber = $seat['seat_number'] ?? null;
+            if (!$seat || $seat['status'] === 'disabled') {
+                return $this->jsonResponse(['error' => 'Seat tidak valid atau dinonaktifkan.'], 400);
+            }
+            $seatNumber = $seat['seat_number'];
         }
 
         // Insert ticket
@@ -1579,7 +1610,7 @@ class ManifestUploadController extends ApiController
             'seq_no'         => $nextSeq,
             'passenger_name' => $passengerName,
             'group_name'     => $groupName,
-            'ticket_code'    => $ticketCode,
+            'ticket_code'    => null, // set after insert using DB id for uniqueness
             'ket'            => $ket,
             'seat_id'        => $seatId,
             'seat_number'    => $seatNumber,
@@ -1595,6 +1626,10 @@ class ManifestUploadController extends ApiController
 
         $db->table('manifest_tickets')->insert($ticketData);
         $ticketId = $db->insertID();
+
+        // Set ticket_code using actual DB id to guarantee uniqueness
+        $ticketCode = 'TKT-' . $uploadId . '-' . str_pad($ticketId, 5, '0', STR_PAD_LEFT);
+        $db->table('manifest_tickets')->where('id', $ticketId)->update(['ticket_code' => $ticketCode]);
 
         // No need to touch seat.status — availability is tracked per trip_date via manifest_tickets
 
