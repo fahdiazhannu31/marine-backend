@@ -3630,15 +3630,17 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         }
 
         return $this->jsonResponse([
-            'type'              => 'passenger',
-            'scanned_ticket_id' => (int)$ticket['id'],
-            'is_return'         => (bool)$isReturnDate,
-            'group_name'        => $ticket['group_name'],
-            'upload_id'         => $ticket['upload_id'],
-            'boat_name'         => $upload['boat_name'],
-            'trip_date'         => $upload['trip_date'],
-            'direction'         => $isReturnDate ? 'RETURN' : 'DEPARTURE',
-            'tickets'           => $tickets,
+            'type'                   => 'passenger',
+            'scanned_ticket_id'      => (int)$ticket['id'],
+            'scanned_passenger_name' => $ticket['passenger_name'],
+            'scanned_seat_number'    => $ticket['seat_number'] ?? null,
+            'is_return'              => (bool)$isReturnDate,
+            'group_name'             => $ticket['group_name'],
+            'upload_id'              => $ticket['upload_id'],
+            'boat_name'              => $upload['boat_name'],
+            'trip_date'              => $upload['trip_date'],
+            'direction'              => $isReturnDate ? 'RETURN' : 'DEPARTURE',
+            'tickets'                => $tickets,
         ]);
     }
 
