@@ -3378,8 +3378,11 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
     // Handles both passenger QR (NAMA_MARINE_MANIFEST_*) and crew QR (CREW_*)
     public function getGroupByCode(string $code)
     {
-        if (!$this->isAdminUser()) {
-            return $this->jsonResponse(['error' => 'Forbidden.'], 403);
+        // Allow any authenticated user (admin, staff, crew) to scan QR codes
+        // Not just admin, because PDA scanners may be logged in as staff/crew
+        $userId = $this->getUserId();
+        if (!$userId) {
+            return $this->jsonResponse(['error' => 'Unauthorized. Please login first.'], 401);
         }
 
         $db = \Config\Database::connect();
