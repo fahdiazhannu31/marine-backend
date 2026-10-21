@@ -3084,8 +3084,10 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             . ($upload['direction'] === 'RETURN' ? 'KEPULANGAN' : 'KEBERANGKATAN');
         $merge('A2:M2');
         $set('A2', $titleText);
+        $fill('A2:M2', 'FFFFFACD'); // light yellow like template
         $bold('A2', 14, 'FF000000');
         $align('A2', 'center', 'center');
+        $border('A2:M2');
         $sheet->getRowDimension(2)->setRowHeight(22);
 
         // ════════════════════════════════════════════════════════════
@@ -3100,8 +3102,10 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             : '';
         $merge('A3:M3');
         $set('A3', $dateLabel);
+        $fill('A3:M3', 'FFFFFACD'); // light yellow
         $bold('A3', 12, 'FF000000');
         $align('A3', 'center', 'center');
+        $border('A3:M3');
         $sheet->getRowDimension(3)->setRowHeight(18);
 
         // ════════════════════════════════════════════════════════════
@@ -3173,12 +3177,15 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             $align("J{$row}", 'right');
             $bold("K{$row}", 9);
             $align("K{$row}", 'center');
-            // Highlight TOTAL row
             if ($label === 'TOTAL') {
                 $bold("J{$row}", 10);
                 $bold("K{$row}", 10);
+                $fill("J{$row}:K{$row}", 'FFFFFACD'); // yellow highlight on TOTAL
             }
         }
+
+        // Border around entire meta block (rows 5-12, cols A-M)
+        $border('A5:M12', \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
 
         // Row heights for meta
         for ($r = 5; $r <= 12; $r++) {
@@ -3191,8 +3198,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         $sheet->getRowDimension(13)->setRowHeight(6);
 
         // ════════════════════════════════════════════════════════════
-        // ROW 14 — Column headers
-        // Template: (blank) NO  KET  NAMA  GRUP  AGENT  PACKAGE  PAX  NOTES  UMUR  GENDER  DOMISILI  ID/PASPORT
+        // ROW 14 — Column headers (yellow background like template)
         // ════════════════════════════════════════════════════════════
         $headerRow = 14;
         $headerCols = [
@@ -3212,6 +3218,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         foreach ($headerCols as $col => $label) {
             $cell = "{$col}{$headerRow}";
             $set($cell, $label);
+            $fill($cell, 'FFFFFACD'); // light yellow
             $bold($cell, 9, 'FF000000');
             $align($cell, 'center', 'center');
             $border($cell, \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
@@ -3220,20 +3227,17 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
 
         // ════════════════════════════════════════════════════════════
         // ROWS 15+ — Data rows with section headers
-        // Section headers: e.g.  (blank) (blank) MENGINAP (blank)... 48 PAX
-        //                        (blank) (blank) DAY TRIP (blank)...  8 PAX
-        //                        (blank) (blank) STAFF/FOC/VENDOR ... 7 PAX
         // ════════════════════════════════════════════════════════════
         $dataRow    = $headerRow + 1;
         $currentKet = null;
-        $globalSeq  = 1; // renumber from 1
+        $globalSeq  = 1;
 
-        // Section display config — STAFF/FOC/VENDOR are grouped in one header
+        // Section display config — STAFF/FOC/VENDOR grouped in one header
         $sectionHeaders = [
-            'OVERNIGHT' => ['label' => 'MENGINAP',         'count' => $ovCount],
-            'DAY TRIP'  => ['label' => 'DAY TRIP',          'count' => $dtCount],
-            'STAFF'     => ['label' => 'STAFF/FOC/VENDOR',  'count' => $stCount + $focCount + $vnCount],
-            'FOC'       => null, // no separate header — grouped under STAFF
+            'OVERNIGHT' => ['label' => 'MENGINAP',        'count' => $ovCount],
+            'DAY TRIP'  => ['label' => 'DAY TRIP',         'count' => $dtCount],
+            'STAFF'     => ['label' => 'STAFF/FOC/VENDOR', 'count' => $stCount + $focCount + $vnCount],
+            'FOC'       => null,
             'VENDOR'    => null,
         ];
 
@@ -3246,28 +3250,39 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             $sectionInfo = $sectionHeaders[$ketKey] ?? null;
             if ($ketKey !== $currentKet && $sectionInfo !== null) {
                 $currentKet = $ketKey;
-                $cnt   = $sectionInfo['count'];
-                $label = $sectionInfo['label'] . "\t\t\t\t\t\t\t\t" . $cnt . "\tPAX";
-                // Write section header: blank B, then section label merged D:I, then count in J, "PAX" in K
-                $set("D{$dataRow}", $sectionInfo['label']);
-                $bold("D{$dataRow}", 9);
+                $cnt = $sectionInfo['count'];
+                // Section header row — light yellow background, bold, borders
+                $merge("B{$dataRow}:M{$dataRow}");
+                $set("B{$dataRow}", $sectionInfo['label']);
+                $fill("B{$dataRow}:M{$dataRow}", 'FFFFFACD'); // light yellow
+                $bold("B{$dataRow}", 10);
+                $align("B{$dataRow}", 'left', 'center');
+                $border("B{$dataRow}:M{$dataRow}", \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+                // Count + PAX at the right
                 $set("J{$dataRow}", $cnt);
-                $bold("J{$dataRow}", 9);
+                $bold("J{$dataRow}", 10);
                 $align("J{$dataRow}", 'center');
                 $set("K{$dataRow}", 'PAX');
-                $bold("K{$dataRow}", 9);
+                $bold("K{$dataRow}", 10);
                 $sheet->getRowDimension($dataRow)->setRowHeight(14);
                 $dataRow++;
             } elseif ($ketKey !== $currentKet && $sectionInfo === null) {
-                // FOC/VENDOR — no new section header, just continue under current
                 $currentKet = $ketKey;
             }
 
             $isCancelled = (int)$t['cancelled'] === 1;
 
-            // Write data row using same column layout as template
-            // B=NO, C=KET, D=NAMA, E=GRUP, F=AGENT, G=PACKAGE, H=PAX, I=NOTES,
-            // J=UMUR, K=GENDER, L=DOMISILI, M=ID/PASPORT
+            // Row background: cancelled=pink, overnight=light blue, daytrip=light orange, staff/foc/vendor=light green
+            if ($isCancelled) {
+                $rowBg = 'FFFFCCCC';
+            } elseif ($ketKey === 'OVERNIGHT') {
+                $rowBg = 'FFDCE6F1';
+            } elseif ($ketKey === 'DAY TRIP') {
+                $rowBg = 'FFFFEBCC';
+            } else {
+                $rowBg = 'FFD9EAD3';
+            }
+
             $rowData = [
                 'B' => $globalSeq,
                 'C' => $t['ket']            ?? '',
@@ -3286,6 +3301,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             foreach ($rowData as $col => $val) {
                 $cell = "{$col}{$dataRow}";
                 $setStr($cell, (string)$val);
+                $fill($cell, $rowBg);
                 $font($cell, 9);
                 $border($cell, \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_HAIR);
                 if ($isCancelled) {
