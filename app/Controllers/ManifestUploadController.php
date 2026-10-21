@@ -2952,7 +2952,8 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
     }
 
     // GET /api/admin/manifest/export-excel/{uploadId}
-    // Streams an .xlsx file matching the manifest template format
+    // GET /api/admin/manifest/export-excel/{uploadId}
+    // Streams an .xlsx file matching the manifest template format EXACTLY
     public function exportExcel(int $uploadId)
     {
         if (!$this->isAdminUser()) {
@@ -2977,6 +2978,365 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             ->orderBy('seq_no', 'ASC')
             ->get()
             ->getResultArray();
+
+        // Sort by section order
+        $sectionOrder = ['OVERNIGHT' => 0, 'DAY TRIP' => 1, 'DAYTRIP' => 1,
+                         'STAFF' => 2, 'FOC' => 3, 'VENDOR' => 4];
+        usort($tickets, function($a, $b) use ($sectionOrder) {
+            $ketA = strtoupper(trim($a['ket'] ?? ''));
+            $ketB = strtoupper(trim($b['ket'] ?? ''));
+            $keyA = str_contains($ketA, 'DAY') ? 'DAY TRIP'
+                  : (str_contains($ketA, 'OVERNIGHT') ? 'OVERNIGHT' : $ketA);
+            $keyB = str_contains($ketB, 'DAY') ? 'DAY TRIP'
+                  : (str_contains($ketB, 'OVERNIGHT') ? 'OVERNIGHT' : $ketB);
+            $orderA = $sectionOrder[$keyA] ?? 99;
+            $orderB = $sectionOrder[$keyB] ?? 99;
+            if ($orderA !== $orderB) return $orderA - $orderB;
+            return (int)$a['seq_no'] - (int)$b['seq_no'];
+        });
+
+        // ── Setup spreadsheet ────────────────────────────────────────
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Sheet1');
+
+        // Helpers
+        $S      = fn($cell) => $sheet->getStyle($cell);
+        $set    = fn(string $cell, $val) => $sheet->setCellValue($cell, $val);
+        $setStr = fn(string $cell, $val) => $sheet->setCellValueExplicit(
+            $cell, (string)$val,
+            \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING
+        );
+        $merge  = fn(string $range) => $sheet->mergeCells($range);
+
+        $fill = function(string $range, string $argb) use ($S) {
+            $S($range)->getFill()
+                ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+                ->getStartColor()->setARGB($argb);
+        };
+        $bold = function(string $range, int $sz = 10, string $color = 'FF000000') use ($S) {
+            $S($range)->getFont()->setBold(true)->setSize($sz);
+            $S($range)->getFont()->getColor()->setARGB($color);
+        };
+        $font = function(string $range, int $sz = 10, string $color = 'FF000000', bool $b = false) use ($S) {
+            $S($range)->getFont()->setBold($b)->setSize($sz);
+            $S($range)->getFont()->getColor()->setARGB($color);
+        };
+        $align = function(string $range, string $h = 'left', string $v = 'center') use ($S) {
+            $S($range)->getAlignment()->setHorizontal($h)->setVertical($v)->setWrapText(true);
+        };
+        $border = function(string $range, string $style = 'thin') use ($S) {
+            $S($range)->getBorders()->getAllBorders()->setBorderStyle($style);
+        };
+
+        // ── Counts ───────────────────────────────────────────────────
+        $abkNames = [];
+        if (!empty($upload['abk_names'])) {
+            $decoded = json_decode($upload['abk_names'], true);
+            $abkNames = is_array($decoded)
+                ? $decoded
+                : array_filter(array_map('trim', explode(',', $upload['abk_names'])));
+        }
+        $crewStr = implode(',', array_map('strtoupper', $abkNames));
+
+        $non      = array_filter($tickets, fn($t) => (int)$t['cancelled'] !== 1);
+        $ovCount  = count(array_filter($non, fn($t) => str_contains(strtoupper($t['ket']??''), 'OVERNIGHT')));
+        $dtCount  = count(array_filter($non, fn($t) => str_contains(strtoupper($t['ket']??''), 'DAY')));
+        $stCount  = count(array_filter($non, fn($t) => strtoupper($t['ket']??'') === 'STAFF'));
+        $focCount = count(array_filter($non, fn($t) => strtoupper($t['ket']??'') === 'FOC'));
+        $vnCount  = count(array_filter($non, fn($t) => strtoupper($t['ket']??'') === 'VENDOR'));
+        $ovCancel = count(array_filter($tickets, fn($t) =>
+            (int)$t['cancelled'] === 1 && str_contains(strtoupper($t['ket']??''), 'OVERNIGHT')));
+        $dtCancel = count(array_filter($tickets, fn($t) =>
+            (int)$t['cancelled'] === 1 && str_contains(strtoupper($t['ket']??''), 'DAY')));
+        $totalPax = count($non);
+
+        $boatName = strtoupper($upload['boat_name'] ?? '');
+        $origin   = strtoupper($upload['origin']    ?? '');
+        $dest     = strtoupper($upload['destination'] ?? '');
+        $captain  = strtoupper($upload['captain_name'] ?? '');
+        $gro      = strtoupper($upload['gro_name'] ?? '');
+
+        // ── Column widths (A–L) matching template ───────────────────
+        // Template uses columns A–L (A is blank/logo area, data starts B)
+        // A=narrow, B=NO(narrow), C=KET, D=NAMA, E=GRUP, F=AGENT,
+        // G=PACKAGE, H=PAX, I=NOTES, J=UMUR, K=GENDER, L=DOMISILI, M=ID/PASPORT
+        // But template only has 12 cols (A-L) — we use same
+        $colWidths = [
+            'A'=>4, 'B'=>5, 'C'=>13, 'D'=>30, 'E'=>25,
+            'F'=>18, 'G'=>14, 'H'=>5, 'I'=>22, 'J'=>7,
+            'K'=>8, 'L'=>20, 'M'=>22,
+        ];
+        foreach ($colWidths as $col => $w) {
+            $sheet->getColumnDimension($col)->setWidth($w);
+        }
+        $sheet->getDefaultRowDimension()->setRowHeight(15);
+
+        // ════════════════════════════════════════════════════════════
+        // ROW 1 — empty (like template)
+        // ════════════════════════════════════════════════════════════
+        $sheet->getRowDimension(1)->setRowHeight(8);
+
+        // ════════════════════════════════════════════════════════════
+        // ROW 2 — Title: MANIFEST PENUMPANG KEBERANGKATAN
+        // ════════════════════════════════════════════════════════════
+        $titleText = 'MANIFEST PENUMPANG '
+            . ($upload['direction'] === 'RETURN' ? 'KEPULANGAN' : 'KEBERANGKATAN');
+        $merge('A2:M2');
+        $set('A2', $titleText);
+        $bold('A2', 14, 'FF000000');
+        $align('A2', 'center', 'center');
+        $sheet->getRowDimension(2)->setRowHeight(22);
+
+        // ════════════════════════════════════════════════════════════
+        // ROW 3 — Date: 16 OKTOBER 2026
+        // ════════════════════════════════════════════════════════════
+        $months = ['January'=>'JANUARI','February'=>'FEBRUARI','March'=>'MARET',
+            'April'=>'APRIL','May'=>'MEI','June'=>'JUNI','July'=>'JULI',
+            'August'=>'AGUSTUS','September'=>'SEPTEMBER','October'=>'OKTOBER',
+            'November'=>'NOVEMBER','December'=>'DESEMBER'];
+        $dateLabel = $upload['trip_date']
+            ? strtr(strtoupper(date('d F Y', strtotime($upload['trip_date']))), $months)
+            : '';
+        $merge('A3:M3');
+        $set('A3', $dateLabel);
+        $bold('A3', 12, 'FF000000');
+        $align('A3', 'center', 'center');
+        $sheet->getRowDimension(3)->setRowHeight(18);
+
+        // ════════════════════════════════════════════════════════════
+        // ROW 4 — blank spacer
+        // ════════════════════════════════════════════════════════════
+        $sheet->getRowDimension(4)->setRowHeight(6);
+
+        // ════════════════════════════════════════════════════════════
+        // ROWS 5–11 — Meta block
+        // Template layout:
+        //   B=label  C=value(merged C:E)    F=label  G=value(merged G:I)   J=KET   K=count
+        // Row 5: KAPAL :  <boat>            ASAL :   <origin>              OVERNIGHT  48
+        // Row 6:                            TUJUAN : <dest>                DAY TRIP    8
+        // Row 7:          (GT blank)        NAHKODA: <captain>             STAFF       6
+        // Row 8:                            CREW :   <crew>                FOC         1
+        // Row 9:                            GRO :    <gro>                 VENDOR      0
+        // Row 10: BENDERA: INDONESIA                                        OV CANCEL   0
+        // Row 11:                                                           DT CANCEL   0
+        // Row 12:                                                           TOTAL       63
+        // ════════════════════════════════════════════════════════════
+
+        // Left block
+        $metaLeftData = [
+            5  => ['label' => 'KAPAL :',   'val' => $boatName],
+            6  => ['label' => 'GT :',      'val' => ''],
+            10 => ['label' => 'BENDERA :', 'val' => 'INDONESIA'],
+        ];
+        foreach ($metaLeftData as $row => $d) {
+            $set("B{$row}", $d['label']);
+            $bold("B{$row}", 9);
+            $align("B{$row}", 'right');
+            $merge("C{$row}:E{$row}");
+            $set("C{$row}", $d['val']);
+            $bold("C{$row}", 9);
+        }
+
+        // Mid block
+        $metaMidData = [
+            5  => ['label' => 'ASAL :',    'val' => $origin],
+            6  => ['label' => 'TUJUAN :',  'val' => $dest],
+            7  => ['label' => 'NAHKODA :', 'val' => $captain],
+            8  => ['label' => 'CREW :',    'val' => $crewStr],
+            9  => ['label' => 'GRO :',     'val' => $gro],
+        ];
+        foreach ($metaMidData as $row => $d) {
+            $set("F{$row}", $d['label']);
+            $bold("F{$row}", 9);
+            $align("F{$row}", 'right');
+            $merge("G{$row}:I{$row}");
+            $set("G{$row}", $d['val']);
+            $bold("G{$row}", 9);
+        }
+
+        // Right block (KET counts)
+        $metaRightData = [
+            5  => ['OVERNIGHT',       $ovCount],
+            6  => ['DAY TRIP',        $dtCount],
+            7  => ['STAFF',           $stCount],
+            8  => ['FOC',             $focCount],
+            9  => ['VENDOR',          $vnCount],
+            10 => ['OVERNIGHT CANCEL',$ovCancel],
+            11 => ['DAY TRIP CANCEL', $dtCancel],
+            12 => ['TOTAL',           $totalPax],
+        ];
+        foreach ($metaRightData as $row => [$label, $val]) {
+            $set("J{$row}", $label);
+            $set("K{$row}", $val);
+            $bold("J{$row}", 9);
+            $align("J{$row}", 'right');
+            $bold("K{$row}", 9);
+            $align("K{$row}", 'center');
+            // Highlight TOTAL row
+            if ($label === 'TOTAL') {
+                $bold("J{$row}", 10);
+                $bold("K{$row}", 10);
+            }
+        }
+
+        // Row heights for meta
+        for ($r = 5; $r <= 12; $r++) {
+            $sheet->getRowDimension($r)->setRowHeight(14);
+        }
+
+        // ════════════════════════════════════════════════════════════
+        // ROW 13 — blank spacer
+        // ════════════════════════════════════════════════════════════
+        $sheet->getRowDimension(13)->setRowHeight(6);
+
+        // ════════════════════════════════════════════════════════════
+        // ROW 14 — Column headers
+        // Template: (blank) NO  KET  NAMA  GRUP  AGENT  PACKAGE  PAX  NOTES  UMUR  GENDER  DOMISILI  ID/PASPORT
+        // ════════════════════════════════════════════════════════════
+        $headerRow = 14;
+        $headerCols = [
+            'B' => 'NO',
+            'C' => 'KET',
+            'D' => 'NAMA',
+            'E' => 'GRUP',
+            'F' => 'AGENT',
+            'G' => 'PACKAGE',
+            'H' => 'PAX',
+            'I' => 'NOTES',
+            'J' => 'UMUR',
+            'K' => 'GENDER',
+            'L' => 'DOMISILI',
+            'M' => 'ID / PASPORT',
+        ];
+        foreach ($headerCols as $col => $label) {
+            $cell = "{$col}{$headerRow}";
+            $set($cell, $label);
+            $bold($cell, 9, 'FF000000');
+            $align($cell, 'center', 'center');
+            $border($cell, \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+        }
+        $sheet->getRowDimension($headerRow)->setRowHeight(16);
+
+        // ════════════════════════════════════════════════════════════
+        // ROWS 15+ — Data rows with section headers
+        // Section headers: e.g.  (blank) (blank) MENGINAP (blank)... 48 PAX
+        //                        (blank) (blank) DAY TRIP (blank)...  8 PAX
+        //                        (blank) (blank) STAFF/FOC/VENDOR ... 7 PAX
+        // ════════════════════════════════════════════════════════════
+        $dataRow    = $headerRow + 1;
+        $currentKet = null;
+        $globalSeq  = 1; // renumber from 1
+
+        // Section display config — STAFF/FOC/VENDOR are grouped in one header
+        $sectionHeaders = [
+            'OVERNIGHT' => ['label' => 'MENGINAP',         'count' => $ovCount],
+            'DAY TRIP'  => ['label' => 'DAY TRIP',          'count' => $dtCount],
+            'STAFF'     => ['label' => 'STAFF/FOC/VENDOR',  'count' => $stCount + $focCount + $vnCount],
+            'FOC'       => null, // no separate header — grouped under STAFF
+            'VENDOR'    => null,
+        ];
+
+        foreach ($tickets as $t) {
+            $ket    = strtoupper(trim($t['ket'] ?? ''));
+            $ketKey = str_contains($ket, 'DAY') ? 'DAY TRIP'
+                    : (str_contains($ket, 'OVERNIGHT') ? 'OVERNIGHT' : $ket);
+
+            // Write section header row when section changes
+            $sectionInfo = $sectionHeaders[$ketKey] ?? null;
+            if ($ketKey !== $currentKet && $sectionInfo !== null) {
+                $currentKet = $ketKey;
+                $cnt   = $sectionInfo['count'];
+                $label = $sectionInfo['label'] . "\t\t\t\t\t\t\t\t" . $cnt . "\tPAX";
+                // Write section header: blank B, then section label merged D:I, then count in J, "PAX" in K
+                $set("D{$dataRow}", $sectionInfo['label']);
+                $bold("D{$dataRow}", 9);
+                $set("J{$dataRow}", $cnt);
+                $bold("J{$dataRow}", 9);
+                $align("J{$dataRow}", 'center');
+                $set("K{$dataRow}", 'PAX');
+                $bold("K{$dataRow}", 9);
+                $sheet->getRowDimension($dataRow)->setRowHeight(14);
+                $dataRow++;
+            } elseif ($ketKey !== $currentKet && $sectionInfo === null) {
+                // FOC/VENDOR — no new section header, just continue under current
+                $currentKet = $ketKey;
+            }
+
+            $isCancelled = (int)$t['cancelled'] === 1;
+
+            // Write data row using same column layout as template
+            // B=NO, C=KET, D=NAMA, E=GRUP, F=AGENT, G=PACKAGE, H=PAX, I=NOTES,
+            // J=UMUR, K=GENDER, L=DOMISILI, M=ID/PASPORT
+            $rowData = [
+                'B' => $globalSeq,
+                'C' => $t['ket']            ?? '',
+                'D' => $t['passenger_name'] ?? '',
+                'E' => $t['group_name']     ?? '',
+                'F' => $t['agent']          ?? '',
+                'G' => $t['package']        ?? '',
+                'H' => $t['pax_count']      ?? '',
+                'I' => $t['notes']          ?? '',
+                'J' => $t['age']            ?? '',
+                'K' => $t['gender']         ?? '',
+                'L' => $t['domicile']       ?? '',
+                'M' => $t['id_passport']    ?? '',
+            ];
+
+            foreach ($rowData as $col => $val) {
+                $cell = "{$col}{$dataRow}";
+                $setStr($cell, (string)$val);
+                $font($cell, 9);
+                $border($cell, \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_HAIR);
+                if ($isCancelled) {
+                    $S($cell)->getFont()->setStrikethrough(true);
+                    $S($cell)->getFont()->getColor()->setARGB('FF999999');
+                }
+            }
+            $align("B{$dataRow}", 'center', 'center');
+            $align("H{$dataRow}", 'center', 'center');
+            $sheet->getRowDimension($dataRow)->setRowHeight(14);
+            $globalSeq++;
+            $dataRow++;
+        }
+
+        // ════════════════════════════════════════════════════════════
+        // Footer — Date + Captain signature
+        // ════════════════════════════════════════════════════════════
+        $footerRow = $dataRow + 2;
+        $monthsId = ['January'=>'Januari','February'=>'Februari','March'=>'Maret',
+            'April'=>'April','May'=>'Mei','June'=>'Juni','July'=>'Juli',
+            'August'=>'Agustus','September'=>'September','October'=>'Oktober',
+            'November'=>'November','December'=>'Desember'];
+        $dateStr = $upload['trip_date']
+            ? strtr(date('d F Y', strtotime($upload['trip_date'])), $monthsId)
+            : '';
+
+        $merge("J{$footerRow}:M{$footerRow}");
+        $set("J{$footerRow}", $dateStr);
+        $align("J{$footerRow}", 'center', 'center');
+        $font("J{$footerRow}", 10);
+
+        $sigRow = $footerRow + 4;
+        $merge("J{$sigRow}:M{$sigRow}");
+        $set("J{$sigRow}", $captain);
+        $bold("J{$sigRow}", 11);
+        $align("J{$sigRow}", 'center', 'center');
+        $S("J{$sigRow}")->getBorders()->getTop()
+            ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_MEDIUM);
+
+        // Freeze pane at data start
+        $sheet->freezePane('B15');
+
+        // ── Stream ───────────────────────────────────────────────────
+        $writer   = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+        $boatSlug = strtolower(str_replace(' ', '-', $upload['boat_name'] ?? 'manifest'));
+        $filename = 'manifest-' . $boatSlug . '-' . ($upload['trip_date'] ?? date('Ymd')) . '.xlsx';
+
+        $tempFile = tempnam(sys_get_temp_dir(), 'manifest_xlsx_');
+        $writer->save($tempFile);
+        $fileContent = file_get_contents($tempFile);
+        @unlink($tempFile);
 
         // Sort by section order so sections don't repeat
         $sectionOrder = ['OVERNIGHT' => 0, 'DAY TRIP' => 1, 'DAYTRIP' => 1,
@@ -3063,17 +3423,24 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             $S($range)->getBorders()->getAllBorders()
                 ->setBorderStyle($style);
         };
-        $hBorder = function(string $range) use ($S) {
-            // Only bottom border for section separators
-            $S($range)->getBorders()->getBottom()
-                ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
-        };
+        while (ob_get_level() > 0) { ob_end_clean(); }
 
-        $set = fn(string $cell, $val) => $sheet->setCellValue($cell, $val);
-        $merge = fn(string $range) => $sheet->mergeCells($range);
+        return $this->response
+            ->setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+            ->setHeader('Content-Disposition', 'attachment; filename="' . $filename . '"')
+            ->setHeader('Cache-Control', 'max-age=0, no-store')
+            ->setHeader('Pragma', 'public')
+            ->setHeader('Content-Length', (string) strlen($fileContent))
+            ->setHeader('Access-Control-Allow-Origin', '*')
+            ->setHeader('Access-Control-Expose-Headers', 'Content-Disposition')
+            ->setStatusCode(200)
+            ->setBody($fileContent);
+    }
 
-        // ── Row heights ──────────────────────────────────────────────
-        $sheet->getDefaultRowDimension()->setRowHeight(15);
+
+    // ═══════════════════════════════════════════
+    // CHECK-IN ENDPOINTS
+    // ═══════════════════════════════════════════
 
         // ════════════════════════════════════════════════════════════
         // ROW 1 — Title
