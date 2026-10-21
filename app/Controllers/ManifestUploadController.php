@@ -3484,16 +3484,17 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             // Old format: strip NAMA_MARINE_MANIFEST_ prefix
             $cleanCode = preg_replace('/^NAMA_MARINE_MANIFEST_/i', '', $code);
 
-            // Restrict lookups to today and yesterday (covers overnight return day)
+            // Expand date window: yesterday, today, tomorrow (covers early arrival + next day trips)
             $today     = date('Y-m-d');
             $yesterday = date('Y-m-d', strtotime('-1 day'));
+            $tomorrow  = date('Y-m-d', strtotime('+1 day'));
 
-            // Try ticket_code first, prefer today/yesterday trips to avoid stale matches
+            // Try ticket_code first, prefer today ± 1 day trips to avoid stale matches
             // Use subquery approach to avoid JOIN column collision
             $recentUploadIds = $db->table('manifest_uploads')
                 ->select('id')
                 ->where('trip_date >=', $yesterday)
-                ->where('trip_date <=', $today)
+                ->where('trip_date <=', $tomorrow)
                 ->get()->getResultArray();
             $recentIds = array_column($recentUploadIds, 'id');
 
@@ -3526,6 +3527,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
                     $ticket = $db->table('manifest_tickets')
                         ->where('id_passport', $cleanCode)
                         ->whereIn('upload_id', $recentIds)
+                        ->where('cancelled', 0) // Skip cancelled tickets
                         ->orderBy('id', 'DESC')
                         ->get()->getFirstRow('array');
                 }
@@ -3535,6 +3537,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             if (!$ticket) {
                 $ticket = $db->table('manifest_tickets')
                     ->where('id_passport', $cleanCode)
+                    ->where('cancelled', 0) // Skip cancelled tickets
                     ->orderBy('id', 'DESC')
                     ->get()->getFirstRow('array');
             }
@@ -3556,7 +3559,24 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         }
 
         if (!$ticket) {
-            return $this->jsonResponse(['error' => 'Ticket or group not found.'], 404);
+            // Enhanced error logging for debugging
+            log_message('warning', "QR Scan - Ticket not found. Code: {$code}, CleanCode: " . ($cleanCode ?? 'N/A'));
+            
+            return $this->jsonResponse([
+                'error' => 'Ticket or group not found.',
+                'scanned_code' => $code,
+                'debug_info' => [
+                    'clean_code' => $cleanCode ?? null,
+                    'tried_formats' => [
+                        'url_token' => isset($token) && $token ? 'yes' : 'no',
+                        'ticket_code' => 'yes',
+                        'numeric_id' => is_numeric($cleanCode ?? '') ? 'yes' : 'no',
+                        'id_passport' => 'yes',
+                        'group_name' => 'yes',
+                    ],
+                    'suggestion' => 'Pastikan QR code sesuai dengan manifest yang sudah di-upload. Cek di halaman Manifest Upload > Tickets apakah ticket ini ada.',
+                ],
+            ], 404);
         }
 
         // Get upload info
