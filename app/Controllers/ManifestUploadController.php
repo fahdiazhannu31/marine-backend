@@ -3488,19 +3488,24 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             $today     = date('Y-m-d');
             $yesterday = date('Y-m-d', strtotime('-1 day'));
 
-            // Try ticket_code first (individual boarding pass)
-            // Filter by today OR yesterday to avoid matching stale/old-upload tickets
-            $ticket = $db->table('manifest_tickets mt')
-                ->join('manifest_uploads mu', 'mu.id = mt.upload_id', 'left')
-                ->where('mt.ticket_code', $cleanCode)
-                ->groupStart()
-                    ->where('mu.trip_date >=', $yesterday)
-                    ->where('mu.trip_date <=', $today)
-                ->groupEnd()
-                ->orderBy('mt.id', 'DESC')
-                ->get()->getFirstRow('array');
+            // Try ticket_code first, prefer today/yesterday trips to avoid stale matches
+            // Use subquery approach to avoid JOIN column collision
+            $recentUploadIds = $db->table('manifest_uploads')
+                ->select('id')
+                ->where('trip_date >=', $yesterday)
+                ->where('trip_date <=', $today)
+                ->get()->getResultArray();
+            $recentIds = array_column($recentUploadIds, 'id');
 
-            // Fallback: try without date filter (in case trip is in future or far past)
+            if (!empty($recentIds)) {
+                $ticket = $db->table('manifest_tickets')
+                    ->where('ticket_code', $cleanCode)
+                    ->whereIn('upload_id', $recentIds)
+                    ->orderBy('id', 'DESC')
+                    ->get()->getFirstRow('array');
+            }
+
+            // Fallback: try without date filter (future trips, old data)
             if (!$ticket) {
                 $ticket = $db->table('manifest_tickets')
                     ->where('ticket_code', $cleanCode)
@@ -3517,15 +3522,13 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
 
             // Then try by id_passport (NIK scan) — prefer today's trips
             if (!$ticket) {
-                $ticket = $db->table('manifest_tickets mt')
-                    ->join('manifest_uploads mu', 'mu.id = mt.upload_id', 'left')
-                    ->where('mt.id_passport', $cleanCode)
-                    ->groupStart()
-                        ->where('mu.trip_date >=', $yesterday)
-                        ->where('mu.trip_date <=', $today)
-                    ->groupEnd()
-                    ->orderBy('mt.id', 'DESC')
-                    ->get()->getFirstRow('array');
+                if (!empty($recentIds)) {
+                    $ticket = $db->table('manifest_tickets')
+                        ->where('id_passport', $cleanCode)
+                        ->whereIn('upload_id', $recentIds)
+                        ->orderBy('id', 'DESC')
+                        ->get()->getFirstRow('array');
+                }
             }
 
             // NIK fallback without date filter
