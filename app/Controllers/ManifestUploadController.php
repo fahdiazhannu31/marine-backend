@@ -974,7 +974,7 @@ class ManifestUploadController extends ApiController
         // Format: TKT-{uploadId}-{id padded to 5 digits}
         $insertedTickets = $db->table('manifest_tickets')
             ->where('upload_id', $uploadId)
-            ->whereNull('ticket_code')
+            ->where('ticket_code IS NULL')
             ->get()->getResultArray();
         foreach ($insertedTickets as $row) {
             $db->table('manifest_tickets')
@@ -2725,7 +2725,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         $passengers = $db->table('manifest_tickets')
             ->where('upload_id', $uploadId)
             ->where('cancelled', 0)
-            ->whereNull('seat_id')
+            ->where('seat_id IS NULL')
             ->orderBy('seq_no', 'ASC')
             ->get()
             ->getResultArray();
