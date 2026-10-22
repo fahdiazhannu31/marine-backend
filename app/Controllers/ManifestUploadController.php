@@ -3060,7 +3060,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         // Fallback: try to get crew from crew_assignments if upload fields are empty
         if ((!$captain || !$crewStr) && !empty($upload['schedule_id'])) {
             $crewAssignments = $db->table('crew_assignments ca')
-                ->select('c.name, ca.role')
+                ->select('c.name, c.role')
                 ->join('crew c', 'c.id = ca.crew_id', 'left')
                 ->where('ca.schedule_id', $upload['schedule_id'])
                 ->where('ca.trip_date', substr($upload['trip_date'], 0, 10))
