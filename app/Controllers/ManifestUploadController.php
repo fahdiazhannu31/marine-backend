@@ -441,9 +441,12 @@ class ManifestUploadController extends ApiController
                 $cell = strtoupper(trim((string)($cells[$i] ?? '')));
                 if ($cell === '') continue;
 
+                // Strip trailing colon and spaces — handles "KAPAL :", "NAHKODA :", etc.
+                $cellClean = rtrim(preg_replace('/\s*:\s*$/', '', $cell));
+
                 // ── Text labels (ASAL, TUJUAN, NAHKODA, CREW, GRO) ──
                 foreach ($labelMap as $keyword => $metaKey) {
-                    if ($cell === $keyword) {
+                    if ($cellClean === $keyword) {
                         // next non-empty cell in the same row (max 3 cells away to prevent wrong column)
                         $maxOffset = min($i + 4, $n);
                         for ($j = $i + 1; $j < $maxOffset; $j++) {
@@ -470,7 +473,7 @@ class ManifestUploadController extends ApiController
                         break;
                     }
                     // Case 2: cell is exactly the keyword, value in next non-empty cell (max 3 cells away)
-                    if ($cell === $keyword) {
+                    if ($cellClean === $keyword) {
                         $maxOffset = min($i + 4, $n); // limit search to prevent reading wrong column
                         for ($j = $i + 1; $j < $maxOffset; $j++) {
                             $val = trim((string)($cells[$j] ?? ''));
