@@ -3057,6 +3057,32 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         $captain  = strtoupper($upload['captain_name'] ?? '');
         $gro      = strtoupper($upload['gro_name'] ?? '');
 
+        // Fallback: try to get crew from crew_assignments if upload fields are empty
+        if ((!$captain || !$crewStr) && !empty($upload['schedule_id'])) {
+            $crewAssignments = $db->table('crew_assignments ca')
+                ->select('c.name, ca.role')
+                ->join('crew c', 'c.id = ca.crew_id', 'left')
+                ->where('ca.schedule_id', $upload['schedule_id'])
+                ->where('ca.trip_date', substr($upload['trip_date'], 0, 10))
+                ->get()->getResultArray();
+
+            if (!empty($crewAssignments)) {
+                foreach ($crewAssignments as $ca) {
+                    $role = strtolower($ca['role'] ?? '');
+                    if ($role === 'captain' && !$captain) {
+                        $captain = strtoupper($ca['name']);
+                    } elseif ($role === 'abk' && !$crewStr) {
+                        $abkNames[] = $ca['name'];
+                    } elseif ($role === 'gro' && !$gro) {
+                        $gro = strtoupper($ca['name']);
+                    }
+                }
+                if (!empty($abkNames)) {
+                    $crewStr = implode(',', array_map('strtoupper', $abkNames));
+                }
+            }
+        }
+
         // ── Column widths (A–L) matching template ───────────────────
         // Template uses columns A–L (A is blank/logo area, data starts B)
         // A=narrow, B=NO(narrow), C=KET, D=NAMA, E=GRUP, F=AGENT,
