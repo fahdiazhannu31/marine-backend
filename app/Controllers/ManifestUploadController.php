@@ -215,11 +215,11 @@ class ManifestUploadController extends ApiController
         // Per-boat reserved seats — excluded from auto-assign, must be filled manually
         // Key: substring of boat_name (lowercase), Value: array of seat_numbers to skip
         $reservedSeatMap = [
-            'mola'              => ['9A','9B','9C','9D','9E','9F','9G','9H','9I','9J'],
-            'la vela'           => ['9D','9E','9F'],
-            'la luna'           => ['9A','9B'],
-            'la brisa'          => ['1A','1B','1C','1D','1E','1F','1G','1H'],
-            'marina srikandi 2' => ['1A','1B','1E','1F'],
+            'mola'               => ['9A','9B','9C','9D','9E','9F','9G','9H','9I','9J'],
+            'la vela'            => ['9D','9E','9F'],
+            'la luna'            => ['9A','9B'],
+            'la brisa'           => ['1A','1B','1C','1D','1E','1F','1G','1H'],
+            'marina srikandi 2'  => ['1A','1B','1E','1F'],
         ];
 
         $reservedSeats = [];
@@ -1624,11 +1624,11 @@ class ManifestUploadController extends ApiController
 
             // For certain boats: auto-assign must skip reserved seats (manual-only)
             $reservedSeatMapAuto = [
-                'mola'              => ['9A','9B','9C','9D','9E','9F','9G','9H','9I','9J'],
-                'la vela'           => ['9D','9E','9F'],
-                'la luna'           => ['9A','9B'],
-                'la brisa'          => ['1A','1B','1C','1D','1E','1F','1G','1H'],
-                'marina srikandi 2' => ['1A','1B','1E','1F'],
+                'mola'               => ['9A','9B','9C','9D','9E','9F','9G','9H','9I','9J'],
+                'la vela'            => ['9D','9E','9F'],
+                'la luna'            => ['9A','9B'],
+                'la brisa'           => ['1A','1B','1C','1D','1E','1F','1G','1H'],
+                'marina srikandi 2'  => ['1A','1B','1E','1F'],
             ];
             $boatNameLower  = strtolower($upload['boat_name'] ?? '');
             $reservedAuto   = [];
