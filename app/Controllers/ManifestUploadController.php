@@ -211,9 +211,22 @@ class ManifestUploadController extends ApiController
 
         // Fetch ALL seats for this boat (regardless of global status flag —
         // we scope availability per trip_date using manifest_tickets instead)
-        $allSeats = $db->table('seat')
+
+        // For MOLA-MOLA boats: exclude row 9 seats (9A-9J) from auto-assign pool.
+        // Row 9 is reserved for manual add-passenger assignments only.
+        $boat = $db->table('boat')->select('boat_name')->where('id', $boatId)->get()->getFirstRow('array');
+        $isMolaMola = str_contains(strtolower($boat['boat_name'] ?? ''), 'mola');
+
+        $seatsQuery = $db->table('seat')
             ->where('boat_id', $boatId)
-            ->where('status !=', 'disabled')   // only skip permanently disabled seats
+            ->where('status !=', 'disabled');
+
+        if ($isMolaMola) {
+            // Exclude emergency row 9 seats from regular auto-assign
+            $seatsQuery->where("seat_number NOT IN ('9A','9B','9C','9D','9E','9F','9G','9H','9I','9J')");
+        }
+
+        $allSeats = $seatsQuery
             ->orderBy('CAST(seat_number AS UNSIGNED)', 'DESC')  // REVERSE: start from back rows
             ->orderBy('seat_number', 'DESC')
             ->get()
@@ -1596,7 +1609,15 @@ class ManifestUploadController extends ApiController
                 ->orderBy('seat_number', 'ASC')
                 ->get()->getResultArray();
 
+            // For MOLA-MOLA: auto-assign must also skip row 9 seats
+            $boatNameLower = strtolower($upload['boat_name'] ?? '');
+            $isMolaMolaAuto = str_contains($boatNameLower, 'mola');
+            $row9Seats = ['9A','9B','9C','9D','9E','9F','9G','9H','9I','9J'];
+
             foreach ($allSeats as $s) {
+                if ($isMolaMolaAuto && in_array($s['seat_number'], $row9Seats, true)) {
+                    continue; // skip row 9 for regular auto-assign
+                }
                 if (!in_array((int)$s['id'], $takenSeatIds, true)) {
                     $seatId     = (int)$s['id'];
                     $seatNumber = $s['seat_number'];
