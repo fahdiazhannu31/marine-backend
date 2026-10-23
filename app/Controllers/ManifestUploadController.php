@@ -1576,6 +1576,47 @@ class ManifestUploadController extends ApiController
         // Auto-assign seat if not specified — scope by trip_date like assignSeats()
         $seatNumber = null;
         $tripDate   = $upload['trip_date'] ?? '';
+
+        // ── MOLA-MOLA emergency row guard ────────────────────────────────────
+        // Seats 9A-9J are reserved as emergency/special-guest seats.
+        // They are only assignable when all regular seats (non-row-9) on this
+        // boat + trip_date are already taken.
+        $boatNameLower = strtolower($upload['boat_name'] ?? '');
+        $isMolaMola    = str_contains($boatNameLower, 'mola');
+
+        $isEmergencySeat = function(string $seatNum): bool {
+            return (bool) preg_match('/^9[A-Ja-j]$/i', $seatNum);
+        };
+
+        if ($isMolaMola && $seatId) {
+            // Get the seat_number to check if it's an emergency seat
+            $candidateSeat = $db->table('seat')->where('id', $seatId)->get()->getFirstRow('array');
+            if ($candidateSeat && $isEmergencySeat($candidateSeat['seat_number'])) {
+                // Count regular seats still available on this trip_date
+                $totalRegularSeats = $db->table('seat')
+                    ->where('boat_id', $upload['boat_id'])
+                    ->where('status !=', 'disabled')
+                    ->where('seat_number NOT REGEXP', '^9[A-J]$')
+                    ->countAllResults();
+
+                $takenRegularSeats = $db->table('manifest_tickets')
+                    ->where('trip_date', $tripDate)
+                    ->where('boat_id', $upload['boat_id'])
+                    ->where('cancelled', 0)
+                    ->where('seat_number IS NOT NULL')
+                    ->where('seat_number NOT REGEXP', '^9[A-J]$')
+                    ->countAllResults();
+
+                $availableRegular = $totalRegularSeats - $takenRegularSeats;
+
+                if ($availableRegular > 0) {
+                    return $this->jsonResponse([
+                        'error' => "Kursi darurat baris 9 hanya bisa digunakan jika semua kursi reguler sudah penuh. Masih ada {$availableRegular} kursi reguler tersedia.",
+                        'available_regular' => $availableRegular,
+                    ], 409);
+                }
+            }
+        }
         if (!$seatId) {
             // Get seat IDs already taken on this trip_date + boat
             $takenSeatIds = [];
@@ -1596,7 +1637,25 @@ class ManifestUploadController extends ApiController
                 ->orderBy('seat_number', 'ASC')
                 ->get()->getResultArray();
 
+            // For MOLA-MOLA: skip emergency row 9 unless all regular seats taken
+            $skipEmergency = false;
+            if ($isMolaMola) {
+                $regularSeats    = array_filter($allSeats, fn($s) => !$isEmergencySeat($s['seat_number']));
+                $takenRegularIds = array_filter($takenSeatIds, function($id) use ($allSeats, $isEmergencySeat) {
+                    foreach ($allSeats as $s) {
+                        if ((int)$s['id'] === $id) return !$isEmergencySeat($s['seat_number']);
+                    }
+                    return false;
+                });
+                $availableRegular = count($regularSeats) - count($takenRegularIds);
+                // Only allow emergency seats if no regular seat is left
+                $skipEmergency = $availableRegular > 0;
+            }
+
             foreach ($allSeats as $s) {
+                if ($isMolaMola && $skipEmergency && $isEmergencySeat($s['seat_number'])) {
+                    continue; // skip emergency seats when regular still available
+                }
                 if (!in_array((int)$s['id'], $takenSeatIds, true)) {
                     $seatId     = (int)$s['id'];
                     $seatNumber = $s['seat_number'];
