@@ -1505,6 +1505,7 @@ class ManifestUploadController extends ApiController
                 ->where('ca.schedule_id', $upload['schedule_id'])
                 ->where('ca.trip_date', $upload['trip_date'])
                 ->where('ca.direction', $upload['direction'])
+                ->where('ca.boat_id', $upload['boat_id'])
                 ->get()
                 ->getResultArray();
             
@@ -2187,11 +2188,12 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             ?? $upload['boat_name']
             ?? 'NAMA KAPAL';
 
-        // Get captain name from crew assignments (role='CAPTAIN') for this schedule
+        // Get captain name from crew assignments (role='CAPTAIN') for this schedule + boat
         $captain = $db->table('crew_assignments ca')
             ->select('c.name')
             ->join('crew c', 'c.id = ca.crew_id', 'left')
             ->where('ca.schedule_id', $upload['schedule_id'])
+            ->where('ca.boat_id', $upload['boat_id'])
             ->where('c.role', 'CAPTAIN')
             ->where('c.active', 1)
             ->get()
@@ -3036,6 +3038,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
                 ->join('crew c', 'c.id = ca.crew_id', 'left')
                 ->where('ca.schedule_id', $upload['schedule_id'])
                 ->where('ca.trip_date', substr($upload['trip_date'], 0, 10))
+                ->where('ca.boat_id', $upload['boat_id'])
                 ->get()->getResultArray();
 
             foreach ($cas as $ca) {
@@ -3731,17 +3734,17 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             ? substr($tripDateParam, 0, 10)
             : ($schedule ? substr($schedule['date'], 0, 10) : $today);
 
-        // All crew assigned to this schedule OR same trip_date
+        // All crew assigned to this schedule AND same boat
+        $boatId = $schedule['boat_id'] ?? null;
         $assignments = $db->table('crew_assignments ca')
             ->select('ca.id as assignment_id, ca.direction, ca.notes as assignment_notes,
                       c.id as crew_id, c.name, c.role, c.phone, c.qr_code,
                       b.boat_name')
             ->join('crew c',  'c.id = ca.crew_id',  'left')
             ->join('boat b',  'b.id = ca.boat_id',  'left')
-            ->groupStart()
-                ->where('ca.schedule_id', $scheduleId)
-                ->orWhere('ca.trip_date',  $tripDate)
-            ->groupEnd()
+            ->where('ca.schedule_id', $scheduleId)
+            ->where('ca.trip_date', $tripDate)
+            ->when($boatId, fn($q) => $q->where('ca.boat_id', $boatId))
             ->where('c.active', 1)
             ->orderBy('c.role', 'ASC')
             ->orderBy('c.name', 'ASC')
