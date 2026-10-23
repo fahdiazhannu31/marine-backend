@@ -1593,10 +1593,11 @@ class ManifestUploadController extends ApiController
             $candidateSeat = $db->table('seat')->where('id', $seatId)->get()->getFirstRow('array');
             if ($candidateSeat && $isEmergencySeat($candidateSeat['seat_number'])) {
                 // Count regular seats still available on this trip_date
+                // Use raw WHERE to avoid CI4 QueryBuilder mangling REGEXP syntax
                 $totalRegularSeats = $db->table('seat')
                     ->where('boat_id', $upload['boat_id'])
                     ->where('status !=', 'disabled')
-                    ->where('seat_number NOT REGEXP', '^9[A-J]$')
+                    ->where("seat_number NOT REGEXP '^9[A-J]$'", null, false)
                     ->countAllResults();
 
                 $takenRegularSeats = $db->table('manifest_tickets')
@@ -1604,7 +1605,7 @@ class ManifestUploadController extends ApiController
                     ->where('boat_id', $upload['boat_id'])
                     ->where('cancelled', 0)
                     ->where('seat_number IS NOT NULL')
-                    ->where('seat_number NOT REGEXP', '^9[A-J]$')
+                    ->where("seat_number NOT REGEXP '^9[A-J]$'", null, false)
                     ->countAllResults();
 
                 $availableRegular = $totalRegularSeats - $takenRegularSeats;
