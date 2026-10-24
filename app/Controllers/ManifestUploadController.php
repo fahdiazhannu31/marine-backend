@@ -3167,46 +3167,65 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         }
         $sheet->getDefaultRowDimension()->setRowHeight(15);
 
-        // ── ROW 1: Title ─────────────────────────────────────────
+        // ── ROWS 1–3: Company header ─────────────────────────────
+        // Row 1: Company name (NAMA MARINE)
+        // Row 2: Address + contact
+        // Row 3: blank spacer
         $merge('A1:M1');
-        $set('A1', $titleText);
-        $fill('A1:M1', 'FFFFFF00');
-        $bold('A1', 14);
-        $align('A1', 'center', 'center');
-        $border('A1:M1');
-        $sheet->getRowDimension(1)->setRowHeight(24);
+        $set('A1', 'NAMA MARINE');
+        $S('A1')->getFont()->setBold(true)->setSize(16);
+        $S('A1')->getFont()->getColor()->setARGB('FFE8272D'); // NAMA red
+        $align('A1', 'left', 'center');
+        $sheet->getRowDimension(1)->setRowHeight(22);
 
-        // ── ROW 2: Date ──────────────────────────────────────────
         $merge('A2:M2');
-        $set('A2', $dateUC);
-        $fill('A2:M2', 'FFFFFF00');
-        $bold('A2', 12);
-        $align('A2', 'center', 'center');
-        $border('A2:M2');
-        $sheet->getRowDimension(2)->setRowHeight(18);
+        $set('A2', 'YJ16, Pantai Mutiara  |  Bahteranama@gmail.com  |  081 9116 888 25');
+        $font('A2', 9, 'FF555555');
+        $align('A2', 'left', 'center');
+        $sheet->getRowDimension(2)->setRowHeight(14);
 
-        // ── ROW 3: blank spacer ──────────────────────────────────
-        $sheet->getRowDimension(3)->setRowHeight(5);
+        $sheet->getRowDimension(3)->setRowHeight(4);
 
-        // ── ROWS 4–11: Meta block ────────────────────────────────
+        // ── ROW 4: Title ─────────────────────────────────────────
+        $merge('A4:M4');
+        $set('A4', $titleText);
+        $fill('A4:M4', 'FFFFFF00');
+        $bold('A4', 14);
+        $align('A4', 'center', 'center');
+        $border('A4:M4');
+        $sheet->getRowDimension(4)->setRowHeight(24);
+
+        // ── ROW 5: Date ──────────────────────────────────────────
+        $merge('A5:M5');
+        $set('A5', $dateUC);
+        $fill('A5:M5', 'FFFFFF00');
+        $bold('A5', 12);
+        $align('A5', 'center', 'center');
+        $border('A5:M5');
+        $sheet->getRowDimension(5)->setRowHeight(18);
+
+        // ── ROW 6: blank spacer ──────────────────────────────────
+        $sheet->getRowDimension(6)->setRowHeight(5);
+
+        // ── ROWS 7–14: Meta block ────────────────────────────────
         // Left labels in B, values in C:E merged
         // Mid labels in F, values in G:I merged
         // Right counts in J (label) and K (value)
         //
-        // Row 4:  KAPAL :  <boat>      ASAL :    <origin>    OVERNIGHT   <n>
-        // Row 5:  GT :     (blank)     TUJUAN :  <dest>      DAY TRIP    <n>
-        // Row 6:  (blank)              NAHKODA : <captain>   STAFF       <n>
-        // Row 7:  (blank)              CREW :    <crew>      FOC         <n>
-        // Row 8:  BENDERA: INDONESIA   GRO :     <gro>       VENDOR      <n>
-        // Row 9:  (blank)              (blank)               OV CANCEL   <n>
-        // Row 10: (blank)              (blank)               DT CANCEL   <n>
-        // Row 11: (blank)              (blank)               TOTAL       <n>
+        // Row 7:  KAPAL :  <boat>      ASAL :    <origin>    OVERNIGHT   <n>
+        // Row 8:  GT :     (blank)     TUJUAN :  <dest>      DAY TRIP    <n>
+        // Row 9:  (blank)              NAHKODA : <captain>   STAFF       <n>
+        // Row 10: (blank)              CREW :    <crew>      FOC         <n>
+        // Row 11: BENDERA: INDONESIA   GRO :     <gro>       VENDOR      <n>
+        // Row 12: (blank)              (blank)               OV CANCEL   <n>
+        // Row 13: (blank)              (blank)               DT CANCEL   <n>
+        // Row 14: (blank)              (blank)               TOTAL       <n>
 
         // Left block (B=label, C:E merged = value)
         $leftMeta = [
-            4 => ['KAPAL :',   $boatName],
-            5 => ['GT :',      ''],
-            8 => ['BENDERA :', 'INDONESIA'],
+            7  => ['KAPAL :',   $boatName],
+            8  => ['GT :',      ''],
+            11 => ['BENDERA :', 'INDONESIA'],
         ];
         foreach ($leftMeta as $r => [$lbl, $val]) {
             $set("B{$r}", $lbl);  $bold("B{$r}", 9);  $align("B{$r}", 'right');
@@ -3215,51 +3234,48 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
 
         // Mid block (F=label, G:I merged = value)
         $midMeta = [
-            4 => ['ASAL :',    $origin],
-            5 => ['TUJUAN :',  $dest],
-            6 => ['NAHKODA :', $captain],
-            7 => ['CREW :',    $crewStr],
-            8 => ['GRO :',     $gro],
+            7  => ['ASAL :',    $origin],
+            8  => ['TUJUAN :',  $dest],
+            9  => ['NAHKODA :', $captain],
+            10 => ['CREW :',    $crewStr],
+            11 => ['GRO :',     $gro],
         ];
         foreach ($midMeta as $r => [$lbl, $val]) {
             $set("F{$r}", $lbl);  $bold("F{$r}", 9);  $align("F{$r}", 'right');
             $merge("G{$r}:I{$r}"); $set("G{$r}", $val); $font("G{$r}", 9);
         }
 
-        // Right block (J=label, K=count) — these exact strings are what the parser
-        // looks for, so do NOT change them.
+        // Right block (J=label, K=count)
         $rightMeta = [
-            4  => ['OVERNIGHT',        $ovCount],
-            5  => ['DAY TRIP',         $dtCount],
-            6  => ['STAFF',            $stCount],
-            7  => ['FOC',              $focCount],
-            8  => ['VENDOR',           $vnCount],
-            9  => ['OVERNIGHT CANCEL', $ovCancel],
-            10 => ['DAY TRIP CANCEL',  $dtCancel],
-            11 => ['TOTAL',            $totalPax],
+            7  => ['OVERNIGHT',        $ovCount],
+            8  => ['DAY TRIP',         $dtCount],
+            9  => ['STAFF',            $stCount],
+            10 => ['FOC',              $focCount],
+            11 => ['VENDOR',           $vnCount],
+            12 => ['OVERNIGHT CANCEL', $ovCancel],
+            13 => ['DAY TRIP CANCEL',  $dtCancel],
+            14 => ['TOTAL',            $totalPax],
         ];
         foreach ($rightMeta as $r => [$lbl, $val]) {
             $set("J{$r}", $lbl);  $bold("J{$r}", 9);  $align("J{$r}", 'right');
             $set("K{$r}", $val);  $bold("K{$r}", 9);  $align("K{$r}", 'center');
         }
         // Highlight TOTAL row
-        $fill('J11:K11', 'FFFFFF00');
-        $bold('J11', 10); $bold('K11', 10);
+        $fill('J14:K14', 'FFFFFF00');
+        $bold('J14', 10); $bold('K14', 10);
 
-        // Fill yellow + border for entire meta block
-        $fill('A4:M11', 'FFFFFACD');
-        $border('A4:M11');
-        for ($r = 4; $r <= 11; $r++) {
+        // Fill yellow + border for meta block — start from B (not A) to avoid offside color
+        $fill('B7:M14', 'FFFFFACD');
+        $border('B7:M14');
+        for ($r = 7; $r <= 14; $r++) {
             $sheet->getRowDimension($r)->setRowHeight(14);
         }
 
-        // ── ROW 12: blank spacer ─────────────────────────────────
-        $sheet->getRowDimension(12)->setRowHeight(5);
+        // ── ROW 15: blank spacer ─────────────────────────────────
+        $sheet->getRowDimension(15)->setRowHeight(5);
 
-        // ── ROW 13: Column headers ───────────────────────────────
-        // The parser's findHeaderRow() looks for a row containing both "NO" and "NAMA"
-        // or "KET" and "GRUP".  mapColumns() then maps these exact strings to DB fields.
-        $hRow = 13;
+        // ── ROW 16: Column headers ───────────────────────────────
+        $hRow = 16;
         $headers = ['B'=>'NO','C'=>'KET','D'=>'NAMA','E'=>'GRUP','F'=>'AGENT',
                     'G'=>'PACKAGE','H'=>'PAX','I'=>'NOTES','J'=>'UMUR',
                     'K'=>'GENDER','L'=>'DOMISILI','M'=>'ID / PASPORT'];
@@ -3273,13 +3289,13 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         }
         $sheet->getRowDimension($hRow)->setRowHeight(16);
 
-        // ── ROW 14+: Section headers then data rows ──────────────
+        // ── ROW 17+: Section headers then data rows ──────────────
         // Section header row format must match what upload parser expects:
         //   parser checks: preg_match('/\d+\s*PAX\s*$/i', $rawName)
         //   and looks at the NAMA column (col D) for the section name.
         // So section header is written into col D as e.g. "MENGINAP 39 PAX"
         // with all other data columns empty.
-        $dataRow    = $hRow + 1;
+        $dataRow    = $hRow + 1;  // starts at row 17
         $currentKet = null;
         $globalSeq  = 1;
 
@@ -3377,7 +3393,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_MEDIUM);
 
         // Freeze panes below header row
-        $sheet->freezePane('B14');
+        $sheet->freezePane('B17');
 
         // ── Stream ───────────────────────────────────────────────
         $boatSlug = strtolower(preg_replace('/[^a-z0-9]+/', '-', strtolower($upload['boat_name'] ?? 'manifest')));
