@@ -205,7 +205,7 @@ class ManifestUploadController extends ApiController
      * @param int     $excludeUploadId  upload_id to exclude (for re-assign on same upload)
      * @return array           Map of ticket->seq_no => ['seat_id', 'seat_number']
      */
-    private function assignSeats(int $boatId, array $groups, string $tripDate = '', int $excludeUploadId = 0): array
+    private function assignSeats(int $boatId, array $groups, string $tripDate = '', int $excludeUploadId = 0, string $direction = ''): array
     {
         $db = \Config\Database::connect();
 
@@ -244,7 +244,8 @@ class ManifestUploadController extends ApiController
             ->get()
             ->getResultArray();
 
-        // Find seat IDs already assigned to another manifest on the same trip_date
+        // Find seat IDs already assigned to another manifest on the same trip_date + direction
+        // Direction must match so DEPARTURE and RETURN on the same date don't conflict
         $takenSeatIds = [];
         if ($tripDate) {
             $takenQuery = $db->table('manifest_tickets')
@@ -253,6 +254,11 @@ class ManifestUploadController extends ApiController
                 ->where('boat_id', $boatId)
                 ->where('seat_id IS NOT NULL')
                 ->where('cancelled', 0);
+
+            // Scope by direction so DEPARTURE and RETURN on same date use seat pool independently
+            if ($direction !== '') {
+                $takenQuery->where('direction', $direction);
+            }
 
             if ($excludeUploadId > 0) {
                 $takenQuery->where('upload_id !=', $excludeUploadId);
@@ -914,7 +920,7 @@ class ManifestUploadController extends ApiController
 
         $seatAssignments = [];
         if ($boatId) {
-            $seatAssignments = $this->assignSeats($boatId, array_values($grouped), $tripDate);
+            $seatAssignments = $this->assignSeats($boatId, array_values($grouped), $tripDate, 0, $direction);
         }
 
         // ── 8. Create manifest_uploads row ───────────────────────────
