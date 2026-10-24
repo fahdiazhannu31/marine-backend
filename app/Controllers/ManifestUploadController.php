@@ -3168,31 +3168,25 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         $sheet->getDefaultRowDimension()->setRowHeight(15);
 
         // ── ROWS 1–2: Company header (dark grey background like reference) ──
-        // Row 1: NAMA MARINE logo text + address on right
-        $merge('A1:M1');
-        $set('A1', 'NAMA MARINE');
-        $fill('A1:M1', 'FF3D3D3D'); // dark grey background
-        $S('A1')->getFont()->setBold(true)->setSize(14);
-        $S('A1')->getFont()->getColor()->setARGB('FFFFFFFF'); // white text
-        $align('A1', 'left', 'center');
+        // Start from B (not A) so col A stays clean throughout the sheet
+        $merge('B1:M1');
+        $set('B1', 'NAMA MARINE');
+        $fill('B1:M1', 'FF3D3D3D');
+        $S('B1')->getFont()->setBold(true)->setSize(14);
+        $S('B1')->getFont()->getColor()->setARGB('FFFFFFFF');
+        $align('B1', 'left', 'center');
         $sheet->getRowDimension(1)->setRowHeight(26);
 
-        // Put address info in right side of same row via separate cells
-        $set('J1', 'YJ16, Pantai Mutiara');
-        $font('J1', 9, 'FFFFFFFF');
-        $align('J1', 'right', 'center');
-        $merge('J1:M1');
-
         // Row 2: contact details
-        $merge('A2:M2');
-        $set('A2', 'Bahteranama@gmail.com  |  081 9116 888 25');
-        $fill('A2:M2', 'FF3D3D3D'); // same dark grey
-        $font('A2', 9, 'FFAAAAAA'); // lighter grey text
-        $align('A2', 'left', 'center');
+        $merge('B2:M2');
+        $set('B2', 'Bahteranama@gmail.com  |  081 9116 888 25');
+        $fill('B2:M2', 'FF3D3D3D');
+        $font('B2', 9, 'FFAAAAAA');
+        $align('B2', 'left', 'center');
         $sheet->getRowDimension(2)->setRowHeight(13);
 
-        // Row 3: thin separator / spacer
-        $fill('A3:M3', 'FF3D3D3D');
+        // Row 3: thin separator
+        $fill('B3:M3', 'FF3D3D3D');
         $sheet->getRowDimension(3)->setRowHeight(3);
 
         // ── ROW 4: Title ─────────────────────────────────────────
@@ -3215,6 +3209,13 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
 
         // ── ROW 6: blank spacer ──────────────────────────────────
         $sheet->getRowDimension(6)->setRowHeight(5);
+
+        // Explicitly clear col A for rows 4-16 so no fill bleeds from company header merge
+        for ($r = 4; $r <= 16; $r++) {
+            $sheet->getStyle("A{$r}")->getFill()
+                ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+                ->getStartColor()->setARGB('FFFFFFFF'); // white
+        }
 
         // ── ROWS 7–14: Meta block ────────────────────────────────
         // Fill background first for the whole block (B to M only, skip col A)
