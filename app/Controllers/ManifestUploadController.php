@@ -3179,7 +3179,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
 
         // Row 2: contact details
         $merge('B2:M2');
-        $set('B2', 'Bahteranama@gmail.com  |  081 9116 888 25');
+        $set('B2', 'YJ16, Pantai Mutiara  |  Bahteranama@gmail.com  |  081 9116 888 25');
         $fill('B2:M2', 'FF3D3D3D');
         $font('B2', 9, 'FFAAAAAA');
         $align('B2', 'left', 'center');
