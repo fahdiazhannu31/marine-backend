@@ -3167,24 +3167,33 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         }
         $sheet->getDefaultRowDimension()->setRowHeight(15);
 
-        // ── ROWS 1–3: Company header ─────────────────────────────
-        // Row 1: Company name (NAMA MARINE)
-        // Row 2: Address + contact
-        // Row 3: blank spacer
+        // ── ROWS 1–2: Company header (dark grey background like reference) ──
+        // Row 1: NAMA MARINE logo text + address on right
         $merge('A1:M1');
         $set('A1', 'NAMA MARINE');
-        $S('A1')->getFont()->setBold(true)->setSize(16);
-        $S('A1')->getFont()->getColor()->setARGB('FFE8272D'); // NAMA red
+        $fill('A1:M1', 'FF3D3D3D'); // dark grey background
+        $S('A1')->getFont()->setBold(true)->setSize(14);
+        $S('A1')->getFont()->getColor()->setARGB('FFFFFFFF'); // white text
         $align('A1', 'left', 'center');
-        $sheet->getRowDimension(1)->setRowHeight(22);
+        $sheet->getRowDimension(1)->setRowHeight(26);
 
+        // Put address info in right side of same row via separate cells
+        $set('J1', 'YJ16, Pantai Mutiara');
+        $font('J1', 9, 'FFFFFFFF');
+        $align('J1', 'right', 'center');
+        $merge('J1:M1');
+
+        // Row 2: contact details
         $merge('A2:M2');
-        $set('A2', 'YJ16, Pantai Mutiara  |  Bahteranama@gmail.com  |  081 9116 888 25');
-        $font('A2', 9, 'FF555555');
+        $set('A2', 'Bahteranama@gmail.com  |  081 9116 888 25');
+        $fill('A2:M2', 'FF3D3D3D'); // same dark grey
+        $font('A2', 9, 'FFAAAAAA'); // lighter grey text
         $align('A2', 'left', 'center');
-        $sheet->getRowDimension(2)->setRowHeight(14);
+        $sheet->getRowDimension(2)->setRowHeight(13);
 
-        $sheet->getRowDimension(3)->setRowHeight(4);
+        // Row 3: thin separator / spacer
+        $fill('A3:M3', 'FF3D3D3D');
+        $sheet->getRowDimension(3)->setRowHeight(3);
 
         // ── ROW 4: Title ─────────────────────────────────────────
         $merge('A4:M4');
@@ -3208,18 +3217,8 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         $sheet->getRowDimension(6)->setRowHeight(5);
 
         // ── ROWS 7–14: Meta block ────────────────────────────────
-        // Left labels in B, values in C:E merged
-        // Mid labels in F, values in G:I merged
-        // Right counts in J (label) and K (value)
-        //
-        // Row 7:  KAPAL :  <boat>      ASAL :    <origin>    OVERNIGHT   <n>
-        // Row 8:  GT :     (blank)     TUJUAN :  <dest>      DAY TRIP    <n>
-        // Row 9:  (blank)              NAHKODA : <captain>   STAFF       <n>
-        // Row 10: (blank)              CREW :    <crew>      FOC         <n>
-        // Row 11: BENDERA: INDONESIA   GRO :     <gro>       VENDOR      <n>
-        // Row 12: (blank)              (blank)               OV CANCEL   <n>
-        // Row 13: (blank)              (blank)               DT CANCEL   <n>
-        // Row 14: (blank)              (blank)               TOTAL       <n>
+        // Fill background first for the whole block (B to M only, skip col A)
+        $fill('B7:M14', 'FFFFFACD');
 
         // Left block (B=label, C:E merged = value)
         $leftMeta = [
@@ -3264,8 +3263,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         $fill('J14:K14', 'FFFFFF00');
         $bold('J14', 10); $bold('K14', 10);
 
-        // Fill yellow + border for meta block — start from B (not A) to avoid offside color
-        $fill('B7:M14', 'FFFFFACD');
+        // Border for meta block
         $border('B7:M14');
         for ($r = 7; $r <= 14; $r++) {
             $sheet->getRowDimension($r)->setRowHeight(14);
