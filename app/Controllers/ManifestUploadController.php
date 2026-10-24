@@ -3196,21 +3196,21 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         $sheet->getRowDimension(3)->setRowHeight(3);
 
         // ── ROW 4: Title ─────────────────────────────────────────
-        $merge('A4:M4');
-        $set('A4', $titleText);
-        $fill('A4:M4', 'FFFFFF00');
-        $bold('A4', 14);
-        $align('A4', 'center', 'center');
-        $border('A4:M4');
+        $merge('B4:M4');
+        $set('B4', $titleText);
+        $fill('B4:M4', 'FFFFFF00');
+        $bold('B4', 14);
+        $align('B4', 'center', 'center');
+        $border('B4:M4');
         $sheet->getRowDimension(4)->setRowHeight(24);
 
         // ── ROW 5: Date ──────────────────────────────────────────
-        $merge('A5:M5');
-        $set('A5', $dateUC);
-        $fill('A5:M5', 'FFFFFF00');
-        $bold('A5', 12);
-        $align('A5', 'center', 'center');
-        $border('A5:M5');
+        $merge('B5:M5');
+        $set('B5', $dateUC);
+        $fill('B5:M5', 'FFFFFF00');
+        $bold('B5', 12);
+        $align('B5', 'center', 'center');
+        $border('B5:M5');
         $sheet->getRowDimension(5)->setRowHeight(18);
 
         // ── ROW 6: blank spacer ──────────────────────────────────
