@@ -3169,10 +3169,10 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         $sheet->getDefaultRowDimension()->setRowHeight(15);
 
         // ── ROW 1: Header hitam dengan logo dan contact info ─────
-        $merge('A1:M1');
-        $fill('A1:M1', 'FF000000');  // Black background
+        $merge('A1:L1');
+        $fill('A1:L1', 'FF000000');  // Black background
         
-        // Logo putih di kiri (if exists)
+        // Logo putih di kiri (if exists) - BIGGER
         $logoPath = FCPATH . 'assets/nama-marine-logo.png';
         if (file_exists($logoPath)) {
             $drawing = new \PhpOffice\PhpSpreadsheet\Worksheet\Drawing();
@@ -3180,35 +3180,38 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             $drawing->setDescription('NAMA Marine');
             $drawing->setPath($logoPath);
             $drawing->setCoordinates('A1');
-            $drawing->setOffsetX(8);
-            $drawing->setOffsetY(8);
-            $drawing->setHeight(32);
+            $drawing->setOffsetX(10);
+            $drawing->setOffsetY(6);
+            $drawing->setHeight(48);  // Bigger logo (was 32)
             $drawing->setWorksheet($sheet);
         }
 
-        // Contact info (white text on black)
-        $set('A1', '          YJ 16, Pantai Mutiara     Bahteranama@gmail.com     081 9116 888 25');
-        $font('A1', 11, 'FFFFFFFF', false);  // White text
-        $align('A1', 'left', 'center');
-        $sheet->getRowDimension(1)->setRowHeight(35);
+        // Contact info (white text on black) - positioned to NOT overlap logo
+        // Logo takes ~cols A-B, so start contact from col C
+        $merge('C1:L1');
+        $set('C1', 'YJ 16, Pantai Mutiara     Bahteranama@gmail.com     081 9116 888 25');
+        $font('C1', 10, 'FFFFFFFF', false);  // White text
+        $align('C1', 'left', 'center');
+        $sheet->getRowDimension(1)->setRowHeight(40);  // Taller for bigger logo
 
         // ── ROW 2: blank spacer ──────────────────────────────────
         $sheet->getRowDimension(2)->setRowHeight(4);
 
-        // ── ROW 3: Title + Date ──────────────────────────────────
-        $merge('A3:M3');
+        // ── ROW 3: Title + Date with CREAM BACKGROUND ────────────
+        $merge('A3:L3');
         $set('A3', $titleText . '     ' . $dateUC);
         $bold('A3', 11);
+        $fill('A3:L3', 'FFFFE8D1');  // Cream background (matches meta area)
         $align('A3', 'center', 'center');
-        $sheet->getRowDimension(3)->setRowHeight(20);
+        $sheet->getRowDimension(3)->setRowHeight(22);
 
         // ── ROW 4: blank spacer ──────────────────────────────────
         $sheet->getRowDimension(4)->setRowHeight(4);
 
         // ── ROWS 5–14: Meta block with cream background ──────────
         // Fill entire meta area with cream/beige color
-        $fill('A5:M14', 'FFFFE8D1');  // Cream/beige background
-        $border('A5:M14', \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+        $fill('A5:L14', 'FFFFE8D1');  // Cream/beige background
+        $border('A5:L14', \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
 
         // Left column: KAPAL info (2-column table format)
         $set('A5', 'KAPAL');    $bold('A5', 10); $align('A5', 'left');
