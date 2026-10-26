@@ -3168,11 +3168,11 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         }
         $sheet->getDefaultRowDimension()->setRowHeight(15);
 
-        // ── ROW 1: Header hitam dengan logo dan contact info ─────
-        $merge('A1:L1');
-        $fill('A1:L1', 'FF000000');  // Black background
+        // ── ROW 1-3: Header hitam dengan logo dan contact info 3 lines ─────
+        // Fill rows 1-3 with black background
+        $fill('A1:L3', 'FF000000');  // Black background for header area
         
-        // Logo putih di kiri (if exists) - BIGGER
+        // Logo putih di kiri spanning rows 1-3
         $logoPath = FCPATH . 'assets/nama-marine-logo.png';
         if (file_exists($logoPath)) {
             $drawing = new \PhpOffice\PhpSpreadsheet\Worksheet\Drawing();
@@ -3181,128 +3181,141 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             $drawing->setPath($logoPath);
             $drawing->setCoordinates('A1');
             $drawing->setOffsetX(10);
-            $drawing->setOffsetY(6);
-            $drawing->setHeight(48);  // Bigger logo (was 32)
+            $drawing->setOffsetY(8);
+            $drawing->setHeight(58);  // Tall logo spanning 3 rows
             $drawing->setWorksheet($sheet);
         }
 
-        // Contact info (white text on black) - positioned to NOT overlap logo
-        // Logo takes ~cols A-B, so start contact from col C
+        // Contact info (white text on black) - 3 separate lines, starting from col C
+        // Line 1: Address
         $merge('C1:L1');
-        $set('C1', 'YJ 16, Pantai Mutiara     Bahteranama@gmail.com     081 9116 888 25');
-        $font('C1', 10, 'FFFFFFFF', false);  // White text
+        $set('C1', 'YJ 16, Pantai Mutiara');
+        $font('C1', 10, 'FFFFFFFF', false);
         $align('C1', 'left', 'center');
-        $sheet->getRowDimension(1)->setRowHeight(40);  // Taller for bigger logo
-
-        // ── ROW 2: blank spacer ──────────────────────────────────
-        $sheet->getRowDimension(2)->setRowHeight(4);
-
-        // ── ROW 3: Title + Date with CREAM BACKGROUND ────────────
-        $merge('A3:L3');
-        $set('A3', $titleText . '     ' . $dateUC);
-        $bold('A3', 11);
-        $fill('A3:L3', 'FFFFE8D1');  // Cream background (matches meta area)
-        $align('A3', 'center', 'center');
-        $sheet->getRowDimension(3)->setRowHeight(22);
+        
+        // Line 2: Email
+        $merge('C2:L2');
+        $set('C2', 'Bahteranama@gmail.com');
+        $font('C2', 10, 'FFFFFFFF', false);
+        $align('C2', 'left', 'center');
+        
+        // Line 3: Phone
+        $merge('C3:L3');
+        $set('C3', '081 9116 888 25');
+        $font('C3', 10, 'FFFFFFFF', false);
+        $align('C3', 'left', 'center');
+        
+        $sheet->getRowDimension(1)->setRowHeight(20);
+        $sheet->getRowDimension(2)->setRowHeight(20);
+        $sheet->getRowDimension(3)->setRowHeight(20);
 
         // ── ROW 4: blank spacer ──────────────────────────────────
         $sheet->getRowDimension(4)->setRowHeight(4);
 
-        // ── ROWS 5–14: Meta block with cream background ──────────
-        // Fill entire meta area with cream/beige color
-        $fill('A5:L14', 'FFFFE8D1');  // Cream/beige background
-        $border('A5:L14', \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+        // ── ROW 5: Title + Date with CREAM BACKGROUND ────────────
+        $merge('A5:L5');
+        $set('A5', $titleText . '     ' . $dateUC);
+        $bold('A5', 11);
+        $fill('A5:L5', 'FFFFE8D1');  // Cream background
+        $align('A5', 'center', 'center');
+        $sheet->getRowDimension(5)->setRowHeight(22);
+
+        // ── ROW 6: blank spacer ──────────────────────────────────
+        $sheet->getRowDimension(6)->setRowHeight(4);
+
+        // ── ROWS 7–16: Meta block with cream background ──────────
+        $fill('A7:L16', 'FFFFE8D1');  // Cream/beige background
+        $border('A7:L16', \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
 
         // Left column: KAPAL info (2-column table format)
-        $set('A5', 'KAPAL');    $bold('A5', 10); $align('A5', 'left');
-        $set('B5', ':');        $align('B5', 'center');
-        $merge('C5:F5');
-        $set('C5', $boatName);  $bold('C5', 11); $align('C5', 'left');
-
-        $set('A6', 'GT');       $bold('A6', 10); $align('A6', 'left');
-        $set('B6', ':');        $align('B6', 'center');
-
-        $set('A7', 'BENDERA');  $bold('A7', 10); $align('A7', 'left');
+        $set('A7', 'KAPAL');    $bold('A7', 10); $align('A7', 'left');
         $set('B7', ':');        $align('B7', 'center');
         $merge('C7:F7');
-        $set('C7', 'INDONESIA'); $bold('C7', 10); $align('C7', 'left');
+        $set('C7', $boatName);  $bold('C7', 11); $align('C7', 'left');
+
+        $set('A8', 'GT');       $bold('A8', 10); $align('A8', 'left');
+        $set('B8', ':');        $align('B8', 'center');
+
+        $set('A9', 'BENDERA');  $bold('A9', 10); $align('A9', 'left');
+        $set('B9', ':');        $align('B9', 'center');
+        $merge('C9:F9');
+        $set('C9', 'INDONESIA'); $bold('C9', 10); $align('C9', 'left');
 
         // Middle column: Route info
-        $set('G5', 'ASAL');     $bold('G5', 10); $align('G5', 'left');
-        $set('H5', ':');        $align('H5', 'center');
-        $merge('I5:J5');
-        $set('I5', $origin);    $font('I5', 10); $align('I5', 'left');
-
-        $set('G6', 'TUJUAN');   $bold('G6', 10); $align('G6', 'left');
-        $set('H6', ':');        $align('H6', 'center');
-        $merge('I6:J6');
-        $set('I6', $dest);      $font('I6', 10); $align('I6', 'left');
-
-        $set('G7', 'NAHKODA');  $bold('G7', 10); $align('G7', 'left');
+        $set('G7', 'ASAL');     $bold('G7', 10); $align('G7', 'left');
         $set('H7', ':');        $align('H7', 'center');
         $merge('I7:J7');
-        $set('I7', $captain);   $font('I7', 10); $align('I7', 'left');
+        $set('I7', $origin);    $font('I7', 10); $align('I7', 'left');
 
-        $set('G8', 'CREW');     $bold('G8', 10); $align('G8', 'left');
+        $set('G8', 'TUJUAN');   $bold('G8', 10); $align('G8', 'left');
         $set('H8', ':');        $align('H8', 'center');
         $merge('I8:J8');
-        $set('I8', $crewStr);   $font('I8', 10); $align('I8', 'left');
+        $set('I8', $dest);      $font('I8', 10); $align('I8', 'left');
 
-        $set('G9', 'GRO');      $bold('G9', 10); $align('G9', 'left');
+        $set('G9', 'NAHKODA');  $bold('G9', 10); $align('G9', 'left');
         $set('H9', ':');        $align('H9', 'center');
         $merge('I9:J9');
-        $set('I9', $gro);       $font('I9', 10); $align('I9', 'left');
+        $set('I9', $captain);   $font('I9', 10); $align('I9', 'left');
+
+        $set('G10', 'CREW');     $bold('G10', 10); $align('G10', 'left');
+        $set('H10', ':');        $align('H10', 'center');
+        $merge('I10:J10');
+        $set('I10', $crewStr);   $font('I10', 10); $align('I10', 'left');
+
+        $set('G11', 'GRO');      $bold('G11', 10); $align('G11', 'left');
+        $set('H11', ':');        $align('H11', 'center');
+        $merge('I11:J11');
+        $set('I11', $gro);       $font('I11', 10); $align('I11', 'left');
 
         // Right column: Counts
-        $set('K5', 'OVERNIGHT');        $font('K5', 9); $align('K5', 'right');
-        $set('M5', $ovCount);           $font('M5', 9); $align('M5', 'right');
+        $set('K7', 'OVERNIGHT');        $font('K7', 9); $align('K7', 'right');
+        $set('L7', $ovCount);           $font('L7', 9); $align('L7', 'right');
 
-        $set('K6', 'DAY TRIP');         $font('K6', 9); $align('K6', 'right');
-        $set('M6', $dtCount);           $font('M6', 9); $align('M6', 'right');
+        $set('K8', 'DAY TRIP');         $font('K8', 9); $align('K8', 'right');
+        $set('L8', $dtCount);           $font('L8', 9); $align('L8', 'right');
 
-        $set('K7', 'STAFF');            $font('K7', 9); $align('K7', 'right');
-        $set('M7', $stCount);           $font('M7', 9); $align('M7', 'right');
+        $set('K9', 'STAFF');            $font('K9', 9); $align('K9', 'right');
+        $set('L9', $stCount);           $font('L9', 9); $align('L9', 'right');
 
-        $set('K8', 'FOC');              $font('K8', 9); $align('K8', 'right');
-        $set('M8', $focCount);          $font('M8', 9); $align('M8', 'right');
+        $set('K10', 'FOC');              $font('K10', 9); $align('K10', 'right');
+        $set('L10', $focCount);          $font('L10', 9); $align('L10', 'right');
 
-        $set('K9', 'VENDOR');           $font('K9', 9); $align('K9', 'right');
-        $set('M9', $vnCount);           $font('M9', 9); $align('M9', 'right');
+        $set('K11', 'VENDOR');           $font('K11', 9); $align('K11', 'right');
+        $set('L11', $vnCount);           $font('L11', 9); $align('L11', 'right');
 
-        $set('K10', 'OVERNIGHT CANCEL'); $font('K10', 9); $align('K10', 'right');
-        $set('M10', $ovCancel);          $font('M10', 9); $align('M10', 'right');
+        $set('K12', 'OVERNIGHT CANCEL'); $font('K12', 9); $align('K12', 'right');
+        $set('L12', $ovCancel);          $font('L12', 9); $align('L12', 'right');
 
-        $set('K11', 'DAY TRIP CANCEL');  $font('K11', 9); $align('K11', 'right');
-        $set('M11', $dtCancel);          $font('M11', 9); $align('M11', 'right');
+        $set('K13', 'DAY TRIP CANCEL');  $font('K13', 9); $align('K13', 'right');
+        $set('L13', $dtCancel);          $font('L13', 9); $align('L13', 'right');
 
-        $set('K13', 'TOTAL');            $bold('K13', 10); $align('K13', 'right');
-        $set('M13', $totalPax);          $bold('M13', 10); $align('M13', 'right');
+        $set('K15', 'TOTAL');            $bold('K15', 10); $align('K15', 'right');
+        $set('L15', $totalPax);          $bold('L15', 10); $align('L15', 'right');
 
-        for ($r = 5; $r <= 14; $r++) {
+        for ($r = 7; $r <= 16; $r++) {
             $sheet->getRowDimension($r)->setRowHeight(16);
         }
 
-        // ── ROW 15: blank spacer ─────────────────────────────────
-        $sheet->getRowDimension(15)->setRowHeight(4);
+        // ── ROW 17: blank spacer ─────────────────────────────────
+        $sheet->getRowDimension(17)->setRowHeight(4);
 
-        // ── ROW 16: Column headers (bright yellow bg) ────────────
-        $hRow = 16;
+        // ── ROW 18: Column headers (bright yellow bg) ────────────
+        $hRow = 18;
         $headers = ['A'=>'NO','B'=>'KET','C'=>'NAMA','D'=>'GRUP','E'=>'AGENT',
                     'F'=>'PACKAGE','G'=>'PAX','H'=>'NOTES','I'=>'UMUR',
                     'J'=>'GENDER','K'=>'DOMISILI','L'=>'ID / PASPORT'];
         foreach ($headers as $col => $lbl) {
             $cell = "{$col}{$hRow}";
             $set($cell, $lbl);
-            $fill($cell, 'FFFFFF00');  // Bright yellow (matches reference exactly)
-            $bold($cell, 9, 'FF000000');  // Black bold text
+            $fill($cell, 'FFFFFF00');  // Bright yellow
+            $bold($cell, 9, 'FF000000');
             $align($cell, 'center', 'center');
             $border($cell, \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
         }
         $sheet->getRowDimension($hRow)->setRowHeight(18);
 
-        // ── ROW 17+: Section headers then data rows ──────────────
-        // Data columns now start from A (not B)
-        $dataRow    = $hRow + 1;  // starts at row 17
+        // ── ROW 19+: Section headers then data rows ──────────────
+        $dataRow    = $hRow + 1;  // starts at row 19
         $currentKet = null;
         $globalSeq  = 1;
 
@@ -3396,7 +3409,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_MEDIUM);
 
         // Freeze panes below header row
-        $sheet->freezePane('A17');
+        $sheet->freezePane('A19');
 
         // ── Stream ───────────────────────────────────────────────
         $boatSlug = strtolower(preg_replace('/[^a-z0-9]+/', '-', strtolower($upload['boat_name'] ?? 'manifest')));
