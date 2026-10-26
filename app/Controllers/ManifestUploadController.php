@@ -3162,90 +3162,83 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         };
 
         // ── Column widths ────────────────────────────────────────
+        // Col A narrow (for logo overlap/spare), data B-M
         foreach (['A'=>4,'B'=>5,'C'=>13,'D'=>30,'E'=>25,'F'=>18,'G'=>14,'H'=>5,'I'=>22,'J'=>7,'K'=>8,'L'=>20,'M'=>22] as $col => $w) {
             $sheet->getColumnDimension($col)->setWidth($w);
         }
         $sheet->getDefaultRowDimension()->setRowHeight(15);
 
-        // ── ROWS 1–2: Company header (dark grey background like reference) ──
-        // Start from B (not A) so col A stays clean throughout the sheet
+        // ── ROW 1–2: Company header ──────────────────────────────
+        // Logo image in col A spanning rows 1-2
+        $logoPath = FCPATH . 'assets/nama-marine-logo.png';
+        if (file_exists($logoPath)) {
+            $drawing = new \PhpOffice\PhpSpreadsheet\Worksheet\Drawing();
+            $drawing->setName('NAMA Marine Logo');
+            $drawing->setDescription('NAMA Marine');
+            $drawing->setPath($logoPath);
+            $drawing->setCoordinates('A1');
+            $drawing->setHeight(55);
+            $drawing->setWorksheet($sheet);
+        }
+
+        // Contact info next to logo
         $merge('B1:M1');
-        $set('B1', 'NAMA MARINE');
-        $fill('B1:M1', 'FF3D3D3D');
-        $S('B1')->getFont()->setBold(true)->setSize(14);
-        $S('B1')->getFont()->getColor()->setARGB('FFFFFFFF');
+        $set('B1', 'YJ 16, Pantai Mutiara      Bahteranama@gmail.com      081 9116 888 25');
+        $bold('B1', 11);
         $align('B1', 'left', 'center');
-        $sheet->getRowDimension(1)->setRowHeight(26);
+        $sheet->getRowDimension(1)->setRowHeight(30);
+        $sheet->getRowDimension(2)->setRowHeight(20);
 
-        // Row 2: contact details
-        $merge('B2:M2');
-        $set('B2', 'YJ16, Pantai Mutiara  |  Bahteranama@gmail.com  |  081 9116 888 25');
-        $fill('B2:M2', 'FF3D3D3D');
-        $font('B2', 9, 'FFAAAAAA');
-        $align('B2', 'left', 'center');
-        $sheet->getRowDimension(2)->setRowHeight(13);
+        // ── ROW 3: blank spacer ──────────────────────────────────
+        $sheet->getRowDimension(3)->setRowHeight(8);
 
-        // Row 3: thin separator
-        $fill('B3:M3', 'FF3D3D3D');
-        $sheet->getRowDimension(3)->setRowHeight(3);
+        // ── ROW 4: Title + Date (matches reference: title then date on same or next line)
+        $merge('A4:M4');
+        $set('A4', $titleText);
+        $bold('A4', 12);
+        $align('A4', 'center', 'center');
+        $sheet->getRowDimension(4)->setRowHeight(22);
 
-        // ── ROW 4: Title ─────────────────────────────────────────
-        $merge('B4:M4');
-        $set('B4', $titleText);
-        $fill('B4:M4', 'FFFFFF00');
-        $bold('B4', 14);
-        $align('B4', 'center', 'center');
-        $border('B4:M4');
-        $sheet->getRowDimension(4)->setRowHeight(24);
-
-        // ── ROW 5: Date ──────────────────────────────────────────
-        $merge('B5:M5');
-        $set('B5', $dateUC);
-        $fill('B5:M5', 'FFFFFF00');
-        $bold('B5', 12);
-        $align('B5', 'center', 'center');
-        $border('B5:M5');
+        $merge('A5:M5');
+        $set('A5', $dateUC);
+        $bold('A5', 11);
+        $align('A5', 'center', 'center');
         $sheet->getRowDimension(5)->setRowHeight(18);
 
         // ── ROW 6: blank spacer ──────────────────────────────────
-        $sheet->getRowDimension(6)->setRowHeight(5);
+        $sheet->getRowDimension(6)->setRowHeight(6);
 
-        // Explicitly clear col A for rows 4-16 so no fill bleeds from company header merge
-        for ($r = 4; $r <= 16; $r++) {
-            $sheet->getStyle("A{$r}")->getFill()
-                ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
-                ->getStartColor()->setARGB('FFFFFFFF'); // white
-        }
-
-        // ── ROWS 7–14: Meta block ────────────────────────────────
-        // Fill background first for the whole block (B to M only, skip col A)
-        $fill('B7:M14', 'FFFFFACD');
-
-        // Left block (B=label, C:E merged = value)
+        // ── ROWS 7–13: Meta block (matches reference exactly) ────
+        // Left: A=label, B=colon, C:E=value (bold large for boat name)
+        // Mid:  F=label, G=colon, H:I=value
+        // Right: J=count label, M=count value
         $leftMeta = [
-            7  => ['KAPAL :',   $boatName],
-            8  => ['GT :',      ''],
-            11 => ['BENDERA :', 'INDONESIA'],
+            7  => ['KAPAL',   $boatName,  true,  12],
+            8  => ['GT',      '',         false, 10],
+            10 => ['BENDERA', 'INDONESIA',true,  11],
         ];
-        foreach ($leftMeta as $r => [$lbl, $val]) {
-            $set("B{$r}", $lbl);  $bold("B{$r}", 9);  $align("B{$r}", 'right');
-            $merge("C{$r}:E{$r}"); $set("C{$r}", $val); $font("C{$r}", 9);
+        foreach ($leftMeta as $r => [$lbl, $val, $bigVal, $valSz]) {
+            $set("A{$r}", $lbl);   $bold("A{$r}", 10); $align("A{$r}", 'right');
+            $set("B{$r}", ':');    $font("B{$r}", 10); $align("B{$r}", 'center');
+            $merge("C{$r}:E{$r}");
+            $set("C{$r}", $val);
+            if ($bigVal) $bold("C{$r}", $valSz); else $font("C{$r}", $valSz);
+            $align("C{$r}", 'center', 'center');
         }
 
-        // Mid block (F=label, G:I merged = value)
         $midMeta = [
-            7  => ['ASAL :',    $origin],
-            8  => ['TUJUAN :',  $dest],
-            9  => ['NAHKODA :', $captain],
-            10 => ['CREW :',    $crewStr],
-            11 => ['GRO :',     $gro],
+            7  => ['ASAL',    $origin],
+            8  => ['TUJUAN',  $dest],
+            9  => ['NAHKODA', $captain],
+            10 => ['CREW',    $crewStr],
+            11 => ['GRO',     $gro],
         ];
         foreach ($midMeta as $r => [$lbl, $val]) {
-            $set("F{$r}", $lbl);  $bold("F{$r}", 9);  $align("F{$r}", 'right');
-            $merge("G{$r}:I{$r}"); $set("G{$r}", $val); $font("G{$r}", 9);
+            $set("F{$r}", $lbl);  $bold("F{$r}", 10); $align("F{$r}", 'right');
+            $set("G{$r}", ':');   $font("G{$r}", 10); $align("G{$r}", 'center');
+            $merge("H{$r}:I{$r}"); $set("H{$r}", $val); $font("H{$r}", 10);
         }
 
-        // Right block (J=label, K=count)
         $rightMeta = [
             7  => ['OVERNIGHT',        $ovCount],
             8  => ['DAY TRIP',         $dtCount],
@@ -3254,26 +3247,28 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             11 => ['VENDOR',           $vnCount],
             12 => ['OVERNIGHT CANCEL', $ovCancel],
             13 => ['DAY TRIP CANCEL',  $dtCancel],
-            14 => ['TOTAL',            $totalPax],
         ];
         foreach ($rightMeta as $r => [$lbl, $val]) {
-            $set("J{$r}", $lbl);  $bold("J{$r}", 9);  $align("J{$r}", 'right');
-            $set("K{$r}", $val);  $bold("K{$r}", 9);  $align("K{$r}", 'center');
+            $set("J{$r}", $lbl);  $font("J{$r}", 9); $align("J{$r}", 'right');
+            $set("M{$r}", $val);  $font("M{$r}", 9); $align("M{$r}", 'right');
         }
-        // Highlight TOTAL row
-        $fill('J14:K14', 'FFFFFF00');
-        $bold('J14', 10); $bold('K14', 10);
+        $set("J14", 'TOTAL');
+        $S('J14')->getFont()->setBold(true)->setItalic(true)->setSize(10);
+        $align('J14', 'right');
+        $set("M14", $totalPax);
+        $bold('M14', 10);
+        $align('M14', 'right');
 
-        // Border for meta block
-        $border('B7:M14');
+        $border('A7:M14');
         for ($r = 7; $r <= 14; $r++) {
-            $sheet->getRowDimension($r)->setRowHeight(14);
+            $sheet->getRowDimension($r)->setRowHeight(16);
         }
 
         // ── ROW 15: blank spacer ─────────────────────────────────
-        $sheet->getRowDimension(15)->setRowHeight(5);
+        $sheet->getRowDimension(15)->setRowHeight(6);
 
-        // ── ROW 16: Column headers ───────────────────────────────
+        // ── ROW 16: Column headers (yellow bg) ───────────────────
+        // NOTE: data columns kept at B-M so upload parser still works
         $hRow = 16;
         $headers = ['B'=>'NO','C'=>'KET','D'=>'NAMA','E'=>'GRUP','F'=>'AGENT',
                     'G'=>'PACKAGE','H'=>'PAX','I'=>'NOTES','J'=>'UMUR',
@@ -3329,6 +3324,12 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
                     $set("D{$dataRow}", $sHeaderText);
                     $bold("D{$dataRow}", 10);
                     $align("D{$dataRow}", 'left', 'center');
+                    // Count at right like reference (col G=count, col H=PAX)
+                    $set("G{$dataRow}", $sCount);
+                    $bold("G{$dataRow}", 10);
+                    $align("G{$dataRow}", 'center');
+                    $set("H{$dataRow}", 'PAX');
+                    $bold("H{$dataRow}", 10);
                     $sheet->getRowDimension($dataRow)->setRowHeight(14);
                     $dataRow++;
                 }
@@ -3336,10 +3337,8 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
 
             $isCancelled = (int)$t['cancelled'] === 1;
 
-            // Row background colour
-            $rowBg = $isCancelled  ? 'FFFFCCCC'
-                   : ($ketKey === 'OVERNIGHT' ? 'FFDCE6F1'
-                   : ($ketKey === 'DAY TRIP'  ? 'FFFFEBCC' : 'FFD9EAD3'));
+            // Data rows: plain white (cancelled = light pink with strikethrough)
+            $rowBg = $isCancelled ? 'FFFFCCCC' : 'FFFFFFFF';
 
             // Data columns — matches mapColumns() key mapping exactly
             $cols = [
