@@ -3162,147 +3162,154 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         };
 
         // ── Column widths ────────────────────────────────────────
-        // Col A narrow (for logo overlap/spare), data B-M
-        foreach (['A'=>4,'B'=>5,'C'=>13,'D'=>30,'E'=>25,'F'=>18,'G'=>14,'H'=>5,'I'=>22,'J'=>7,'K'=>8,'L'=>20,'M'=>22] as $col => $w) {
+        // Adjusted: data now in cols A-L (not B-M)
+        foreach (['A'=>5,'B'=>13,'C'=>30,'D'=>25,'E'=>18,'F'=>14,'G'=>5,'H'=>22,'I'=>7,'J'=>8,'K'=>20,'L'=>22] as $col => $w) {
             $sheet->getColumnDimension($col)->setWidth($w);
         }
         $sheet->getDefaultRowDimension()->setRowHeight(15);
 
-        // ── ROW 1–2: Company header with logo ────────────────────
-        // Logo in col A, spanning rows 1-2
+        // ── ROW 1: Header hitam dengan logo dan contact info ─────
+        $merge('A1:M1');
+        $fill('A1:M1', 'FF000000');  // Black background
+        
+        // Logo putih di kiri (if exists)
         $logoPath = FCPATH . 'assets/nama-marine-logo.png';
         if (file_exists($logoPath)) {
             $drawing = new \PhpOffice\PhpSpreadsheet\Worksheet\Drawing();
             $drawing->setName('NAMA Marine Logo');
             $drawing->setDescription('NAMA Marine');
             $drawing->setPath($logoPath);
-            $drawing->setCoordinates('A1');  // Top-left corner
-            $drawing->setOffsetX(5);         // 5px right padding
-            $drawing->setOffsetY(5);         // 5px down padding
-            $drawing->setHeight(45);         // Fit logo within rows 1-2
+            $drawing->setCoordinates('A1');
+            $drawing->setOffsetX(8);
+            $drawing->setOffsetY(8);
+            $drawing->setHeight(32);
             $drawing->setWorksheet($sheet);
         }
 
-        // Contact info next to logo (cols B-M, row 1)
-        $merge('B1:M1');
-        $set('B1', 'YJ 16, Pantai Mutiara      Bahteranama@gmail.com      081 9116 888 25');
-        $bold('B1', 11);
-        $align('B1', 'left', 'center');
-        $sheet->getRowDimension(1)->setRowHeight(28);
-        $sheet->getRowDimension(2)->setRowHeight(18);
+        // Contact info (white text on black)
+        $set('A1', '          YJ 16, Pantai Mutiara     Bahteranama@gmail.com     081 9116 888 25');
+        $font('A1', 11, 'FFFFFFFF', false);  // White text
+        $align('A1', 'left', 'center');
+        $sheet->getRowDimension(1)->setRowHeight(35);
 
-        // ── ROW 3: blank spacer ──────────────────────────────────
-        $sheet->getRowDimension(3)->setRowHeight(8);
+        // ── ROW 2: blank spacer ──────────────────────────────────
+        $sheet->getRowDimension(2)->setRowHeight(4);
 
-        // ── ROW 4: Title + Date (matches reference: title then date on same or next line)
-        $merge('A4:M4');
-        $set('A4', $titleText);
-        $bold('A4', 12);
-        $align('A4', 'center', 'center');
-        $sheet->getRowDimension(4)->setRowHeight(22);
+        // ── ROW 3: Title + Date ──────────────────────────────────
+        $merge('A3:M3');
+        $set('A3', $titleText . '     ' . $dateUC);
+        $bold('A3', 11);
+        $align('A3', 'center', 'center');
+        $sheet->getRowDimension(3)->setRowHeight(20);
 
-        $merge('A5:M5');
-        $set('A5', $dateUC);
-        $bold('A5', 11);
-        $align('A5', 'center', 'center');
-        $sheet->getRowDimension(5)->setRowHeight(18);
+        // ── ROW 4: blank spacer ──────────────────────────────────
+        $sheet->getRowDimension(4)->setRowHeight(4);
 
-        // ── ROW 6: blank spacer ──────────────────────────────────
-        $sheet->getRowDimension(6)->setRowHeight(6);
+        // ── ROWS 5–14: Meta block with cream background ──────────
+        // Fill entire meta area with cream/beige color
+        $fill('A5:M14', 'FFFFE8D1');  // Cream/beige background
+        $border('A5:M14', \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
 
-        // ── ROWS 7–13: Meta block (matches reference exactly) ────
-        // Left: A=label, B=colon, C:E=value (bold large for boat name)
-        // Mid:  F=label, G=colon, H:I=value
-        // Right: J=count label, M=count value
-        $leftMeta = [
-            7  => ['KAPAL',   $boatName,  true,  12],
-            8  => ['GT',      '',         false, 10],
-            10 => ['BENDERA', 'INDONESIA',true,  11],
-        ];
-        foreach ($leftMeta as $r => [$lbl, $val, $bigVal, $valSz]) {
-            $set("A{$r}", $lbl);   $bold("A{$r}", 10); $align("A{$r}", 'right');
-            $set("B{$r}", ':');    $font("B{$r}", 10); $align("B{$r}", 'center');
-            $merge("C{$r}:E{$r}");
-            $set("C{$r}", $val);
-            if ($bigVal) $bold("C{$r}", $valSz); else $font("C{$r}", $valSz);
-            $align("C{$r}", 'center', 'center');
-        }
+        // Left column: KAPAL info (2-column table format)
+        $set('A5', 'KAPAL');    $bold('A5', 10); $align('A5', 'left');
+        $set('B5', ':');        $align('B5', 'center');
+        $merge('C5:F5');
+        $set('C5', $boatName);  $bold('C5', 11); $align('C5', 'left');
 
-        $midMeta = [
-            7  => ['ASAL',    $origin],
-            8  => ['TUJUAN',  $dest],
-            9  => ['NAHKODA', $captain],
-            10 => ['CREW',    $crewStr],
-            11 => ['GRO',     $gro],
-        ];
-        foreach ($midMeta as $r => [$lbl, $val]) {
-            $set("F{$r}", $lbl);  $bold("F{$r}", 10); $align("F{$r}", 'right');
-            $set("G{$r}", ':');   $font("G{$r}", 10); $align("G{$r}", 'center');
-            $merge("H{$r}:I{$r}"); $set("H{$r}", $val); $font("H{$r}", 10);
-        }
+        $set('A6', 'GT');       $bold('A6', 10); $align('A6', 'left');
+        $set('B6', ':');        $align('B6', 'center');
 
-        $rightMeta = [
-            7  => ['OVERNIGHT',        $ovCount],
-            8  => ['DAY TRIP',         $dtCount],
-            9  => ['STAFF',            $stCount],
-            10 => ['FOC',              $focCount],
-            11 => ['VENDOR',           $vnCount],
-            12 => ['OVERNIGHT CANCEL', $ovCancel],
-            13 => ['DAY TRIP CANCEL',  $dtCancel],
-        ];
-        foreach ($rightMeta as $r => [$lbl, $val]) {
-            $set("J{$r}", $lbl);  $font("J{$r}", 9); $align("J{$r}", 'right');
-            $set("M{$r}", $val);  $font("M{$r}", 9); $align("M{$r}", 'right');
-        }
-        $set("J14", 'TOTAL');
-        $S('J14')->getFont()->setBold(true)->setItalic(true)->setSize(10);
-        $align('J14', 'right');
-        $set("M14", $totalPax);
-        $bold('M14', 10);
-        $align('M14', 'right');
+        $set('A7', 'BENDERA');  $bold('A7', 10); $align('A7', 'left');
+        $set('B7', ':');        $align('B7', 'center');
+        $merge('C7:F7');
+        $set('C7', 'INDONESIA'); $bold('C7', 10); $align('C7', 'left');
 
-        $border('A7:M14');
-        for ($r = 7; $r <= 14; $r++) {
+        // Middle column: Route info
+        $set('G5', 'ASAL');     $bold('G5', 10); $align('G5', 'left');
+        $set('H5', ':');        $align('H5', 'center');
+        $merge('I5:J5');
+        $set('I5', $origin);    $font('I5', 10); $align('I5', 'left');
+
+        $set('G6', 'TUJUAN');   $bold('G6', 10); $align('G6', 'left');
+        $set('H6', ':');        $align('H6', 'center');
+        $merge('I6:J6');
+        $set('I6', $dest);      $font('I6', 10); $align('I6', 'left');
+
+        $set('G7', 'NAHKODA');  $bold('G7', 10); $align('G7', 'left');
+        $set('H7', ':');        $align('H7', 'center');
+        $merge('I7:J7');
+        $set('I7', $captain);   $font('I7', 10); $align('I7', 'left');
+
+        $set('G8', 'CREW');     $bold('G8', 10); $align('G8', 'left');
+        $set('H8', ':');        $align('H8', 'center');
+        $merge('I8:J8');
+        $set('I8', $crewStr);   $font('I8', 10); $align('I8', 'left');
+
+        $set('G9', 'GRO');      $bold('G9', 10); $align('G9', 'left');
+        $set('H9', ':');        $align('H9', 'center');
+        $merge('I9:J9');
+        $set('I9', $gro);       $font('I9', 10); $align('I9', 'left');
+
+        // Right column: Counts
+        $set('K5', 'OVERNIGHT');        $font('K5', 9); $align('K5', 'right');
+        $set('M5', $ovCount);           $font('M5', 9); $align('M5', 'right');
+
+        $set('K6', 'DAY TRIP');         $font('K6', 9); $align('K6', 'right');
+        $set('M6', $dtCount);           $font('M6', 9); $align('M6', 'right');
+
+        $set('K7', 'STAFF');            $font('K7', 9); $align('K7', 'right');
+        $set('M7', $stCount);           $font('M7', 9); $align('M7', 'right');
+
+        $set('K8', 'FOC');              $font('K8', 9); $align('K8', 'right');
+        $set('M8', $focCount);          $font('M8', 9); $align('M8', 'right');
+
+        $set('K9', 'VENDOR');           $font('K9', 9); $align('K9', 'right');
+        $set('M9', $vnCount);           $font('M9', 9); $align('M9', 'right');
+
+        $set('K10', 'OVERNIGHT CANCEL'); $font('K10', 9); $align('K10', 'right');
+        $set('M10', $ovCancel);          $font('M10', 9); $align('M10', 'right');
+
+        $set('K11', 'DAY TRIP CANCEL');  $font('K11', 9); $align('K11', 'right');
+        $set('M11', $dtCancel);          $font('M11', 9); $align('M11', 'right');
+
+        $set('K13', 'TOTAL');            $bold('K13', 10); $align('K13', 'right');
+        $set('M13', $totalPax);          $bold('M13', 10); $align('M13', 'right');
+
+        for ($r = 5; $r <= 14; $r++) {
             $sheet->getRowDimension($r)->setRowHeight(16);
         }
 
         // ── ROW 15: blank spacer ─────────────────────────────────
-        $sheet->getRowDimension(15)->setRowHeight(6);
+        $sheet->getRowDimension(15)->setRowHeight(4);
 
-        // ── ROW 16: Column headers (light gray bg + borders) ─────
-        // NOTE: data columns kept at B-M so upload parser still works
+        // ── ROW 16: Column headers (bright yellow bg) ────────────
         $hRow = 16;
-        $headers = ['B'=>'NO','C'=>'KET','D'=>'NAMA','E'=>'GRUP','F'=>'AGENT',
-                    'G'=>'PACKAGE','H'=>'PAX','I'=>'NOTES','J'=>'UMUR',
-                    'K'=>'GENDER','L'=>'DOMISILI','M'=>'ID / PASPORT'];
+        $headers = ['A'=>'NO','B'=>'KET','C'=>'NAMA','D'=>'GRUP','E'=>'AGENT',
+                    'F'=>'PACKAGE','G'=>'PAX','H'=>'NOTES','I'=>'UMUR',
+                    'J'=>'GENDER','K'=>'DOMISILI','L'=>'ID / PASPORT'];
         foreach ($headers as $col => $lbl) {
             $cell = "{$col}{$hRow}";
             $set($cell, $lbl);
-            $fill($cell, 'FFD9D9D9');  // Light gray background (matches reference)
-            $bold($cell, 9);
+            $fill($cell, 'FFFFFF00');  // Bright yellow (matches reference exactly)
+            $bold($cell, 9, 'FF000000');  // Black bold text
             $align($cell, 'center', 'center');
-            $border($cell, \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_MEDIUM);
+            $border($cell, \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
         }
         $sheet->getRowDimension($hRow)->setRowHeight(18);
 
         // ── ROW 17+: Section headers then data rows ──────────────
-        // Section header row format must match what upload parser expects:
-        //   parser checks: preg_match('/\d+\s*PAX\s*$/i', $rawName)
-        //   and looks at the NAMA column (col D) for the section name.
-        // So section header is written into col D as e.g. "MENGINAP 39 PAX"
-        // with all other data columns empty.
+        // Data columns now start from A (not B)
         $dataRow    = $hRow + 1;  // starts at row 17
         $currentKet = null;
         $globalSeq  = 1;
 
-        // Map ketKey → [section label in NAMA col, count]
-        // "MENGINAP" triggers OVERNIGHT in parser, "DAY TRIP" triggers DAY TRIP, etc.
+        // Section meta for headers
         $sectionMeta = [
             'OVERNIGHT' => ['MENGINAP',        $ovCount],
             'DAY TRIP'  => ['DAY TRIP',         $dtCount],
             'STAFF'     => ['STAFF/FOC/VENDOR', $stCount + $focCount + $vnCount],
-            'FOC'       => null,   // grouped under STAFF header
-            'VENDOR'    => null,   // grouped under STAFF header
+            'FOC'       => null,
+            'VENDOR'    => null,
         ];
 
         foreach ($tickets as $t) {
@@ -3316,45 +3323,39 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
                 $currentKet = $ketKey;
                 if ($sm !== null) {
                     [$sLabel, $sCount] = $sm;
-                    // Write section header: NAMA cell = "<LABEL> <count> PAX"
-                    $sHeaderText = "{$sLabel} {$sCount} PAX";
-                    // Fill section header row YELLOW with borders
-                    $fill("B{$dataRow}:M{$dataRow}", 'FFFFFF00');  // Yellow background
-                    $border("B{$dataRow}:M{$dataRow}", \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_MEDIUM);
-                    // Text in col D (NAMA) — parser reads NAMA column
-                    $set("D{$dataRow}", $sHeaderText);
-                    $bold("D{$dataRow}", 10);
-                    $align("D{$dataRow}", 'left', 'center');
-                    // Count at right (col G=count, col H=PAX)
-                    $set("G{$dataRow}", $sCount);
-                    $bold("G{$dataRow}", 10);
-                    $align("G{$dataRow}", 'center');
-                    $set("H{$dataRow}", 'PAX');
-                    $bold("H{$dataRow}", 10);
+                    // Section header: fill entire row yellow
+                    $fill("A{$dataRow}:L{$dataRow}", 'FFFFFF00');  // Bright yellow
+                    $border("A{$dataRow}:L{$dataRow}", \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+                    // Put section text in col B (KET column)
+                    $set("B{$dataRow}", $sLabel);
+                    $bold("B{$dataRow}", 10);
+                    $align("B{$dataRow}", 'left', 'center');
+                    // Show count in col F (PACKAGE column) for visibility
+                    $set("F{$dataRow}", $sCount);
+                    $bold("F{$dataRow}", 10);
+                    $align("F{$dataRow}", 'center');
                     $sheet->getRowDimension($dataRow)->setRowHeight(16);
                     $dataRow++;
                 }
             }
 
             $isCancelled = (int)$t['cancelled'] === 1;
-
-            // Data rows: plain white (cancelled = light pink with strikethrough)
             $rowBg = $isCancelled ? 'FFFFCCCC' : 'FFFFFFFF';
 
-            // Data columns — matches mapColumns() key mapping exactly
+            // Data columns — updated to A-L mapping
             $cols = [
-                'B' => (string)$globalSeq,          // NO       → seq_no
-                'C' => $t['ket']            ?? '',   // KET      → ket
-                'D' => $t['passenger_name'] ?? '',   // NAMA     → passenger_name
-                'E' => $t['group_name']     ?? '',   // GRUP     → group_name
-                'F' => $t['agent']          ?? '',   // AGENT    → agent
-                'G' => $t['package']        ?? '',   // PACKAGE  → package
-                'H' => (string)($t['pax_count'] ?? ''), // PAX  → pax_count
-                'I' => $t['notes']          ?? '',   // NOTES    → notes
-                'J' => $t['age']            ?? '',   // UMUR     → age
-                'K' => $t['gender']         ?? '',   // GENDER   → gender
-                'L' => $t['domicile']       ?? '',   // DOMISILI → domicile
-                'M' => $t['id_passport']    ?? '',   // ID/PASPORT → id_passport
+                'A' => (string)$globalSeq,          // NO
+                'B' => $t['ket']            ?? '',   // KET
+                'C' => $t['passenger_name'] ?? '',   // NAMA
+                'D' => $t['group_name']     ?? '',   // GRUP
+                'E' => $t['agent']          ?? '',   // AGENT
+                'F' => $t['package']        ?? '',   // PACKAGE
+                'G' => (string)($t['pax_count'] ?? ''), // PAX
+                'H' => $t['notes']          ?? '',   // NOTES
+                'I' => $t['age']            ?? '',   // UMUR
+                'J' => $t['gender']         ?? '',   // GENDER
+                'K' => $t['domicile']       ?? '',   // DOMISILI
+                'L' => $t['id_passport']    ?? '',   // ID/PASPORT
             ];
 
             foreach ($cols as $col => $val) {
@@ -3368,8 +3369,8 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
                         ->getColor()->setARGB('FF999999');
                 }
             }
-            $align("B{$dataRow}", 'center', 'center');  // NO column centered
-            $align("H{$dataRow}", 'center', 'center');  // PAX column centered
+            $align("A{$dataRow}", 'center', 'center');  // NO column centered
+            $align("G{$dataRow}", 'center', 'center');  // PAX column centered
             $sheet->getRowDimension($dataRow)->setRowHeight(15);
 
             $globalSeq++;
@@ -3378,13 +3379,13 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
 
         // ── Footer ───────────────────────────────────────────────
         $footerRow = $dataRow + 2;
-        $merge("J{$footerRow}:M{$footerRow}");
+        $merge("J{$footerRow}:L{$footerRow}");
         $set("J{$footerRow}", $dateLC);
         $align("J{$footerRow}", 'center', 'center');
         $font("J{$footerRow}", 10);
 
         $sigRow = $footerRow + 4;
-        $merge("J{$sigRow}:M{$sigRow}");
+        $merge("J{$sigRow}:L{$sigRow}");
         $set("J{$sigRow}", $captain);
         $bold("J{$sigRow}", 11);
         $align("J{$sigRow}", 'center', 'center');
@@ -3392,7 +3393,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_MEDIUM);
 
         // Freeze panes below header row
-        $sheet->freezePane('B17');
+        $sheet->freezePane('A17');
 
         // ── Stream ───────────────────────────────────────────────
         $boatSlug = strtolower(preg_replace('/[^a-z0-9]+/', '-', strtolower($upload['boat_name'] ?? 'manifest')));
