@@ -3168,26 +3168,28 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         }
         $sheet->getDefaultRowDimension()->setRowHeight(15);
 
-        // ── ROW 1–2: Company header ──────────────────────────────
-        // Logo image in col A spanning rows 1-2
+        // ── ROW 1–2: Company header with logo ────────────────────
+        // Logo in col A, spanning rows 1-2
         $logoPath = FCPATH . 'assets/nama-marine-logo.png';
         if (file_exists($logoPath)) {
             $drawing = new \PhpOffice\PhpSpreadsheet\Worksheet\Drawing();
             $drawing->setName('NAMA Marine Logo');
             $drawing->setDescription('NAMA Marine');
             $drawing->setPath($logoPath);
-            $drawing->setCoordinates('A1');
-            $drawing->setHeight(55);
+            $drawing->setCoordinates('A1');  // Top-left corner
+            $drawing->setOffsetX(5);         // 5px right padding
+            $drawing->setOffsetY(5);         // 5px down padding
+            $drawing->setHeight(45);         // Fit logo within rows 1-2
             $drawing->setWorksheet($sheet);
         }
 
-        // Contact info next to logo
+        // Contact info next to logo (cols B-M, row 1)
         $merge('B1:M1');
         $set('B1', 'YJ 16, Pantai Mutiara      Bahteranama@gmail.com      081 9116 888 25');
         $bold('B1', 11);
         $align('B1', 'left', 'center');
-        $sheet->getRowDimension(1)->setRowHeight(30);
-        $sheet->getRowDimension(2)->setRowHeight(20);
+        $sheet->getRowDimension(1)->setRowHeight(28);
+        $sheet->getRowDimension(2)->setRowHeight(18);
 
         // ── ROW 3: blank spacer ──────────────────────────────────
         $sheet->getRowDimension(3)->setRowHeight(8);
@@ -3267,7 +3269,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         // ── ROW 15: blank spacer ─────────────────────────────────
         $sheet->getRowDimension(15)->setRowHeight(6);
 
-        // ── ROW 16: Column headers (yellow bg) ───────────────────
+        // ── ROW 16: Column headers (light gray bg + borders) ─────
         // NOTE: data columns kept at B-M so upload parser still works
         $hRow = 16;
         $headers = ['B'=>'NO','C'=>'KET','D'=>'NAMA','E'=>'GRUP','F'=>'AGENT',
@@ -3276,12 +3278,12 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         foreach ($headers as $col => $lbl) {
             $cell = "{$col}{$hRow}";
             $set($cell, $lbl);
-            $fill($cell, 'FFFFFF00');
+            $fill($cell, 'FFD9D9D9');  // Light gray background (matches reference)
             $bold($cell, 9);
             $align($cell, 'center', 'center');
-            $border($cell);
+            $border($cell, \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_MEDIUM);
         }
-        $sheet->getRowDimension($hRow)->setRowHeight(16);
+        $sheet->getRowDimension($hRow)->setRowHeight(18);
 
         // ── ROW 17+: Section headers then data rows ──────────────
         // Section header row format must match what upload parser expects:
@@ -3315,22 +3317,21 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
                 if ($sm !== null) {
                     [$sLabel, $sCount] = $sm;
                     // Write section header: NAMA cell = "<LABEL> <count> PAX"
-                    // This format is exactly what the parser's regex matches.
                     $sHeaderText = "{$sLabel} {$sCount} PAX";
-                    // Fill the whole row yellow with borders
-                    $fill("B{$dataRow}:M{$dataRow}", 'FFFFFF00');
-                    $border("B{$dataRow}:M{$dataRow}");
-                    // Only put the text in col D (NAMA) — parser reads NAMA column
+                    // Fill section header row YELLOW with borders
+                    $fill("B{$dataRow}:M{$dataRow}", 'FFFFFF00');  // Yellow background
+                    $border("B{$dataRow}:M{$dataRow}", \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_MEDIUM);
+                    // Text in col D (NAMA) — parser reads NAMA column
                     $set("D{$dataRow}", $sHeaderText);
                     $bold("D{$dataRow}", 10);
                     $align("D{$dataRow}", 'left', 'center');
-                    // Count at right like reference (col G=count, col H=PAX)
+                    // Count at right (col G=count, col H=PAX)
                     $set("G{$dataRow}", $sCount);
                     $bold("G{$dataRow}", 10);
                     $align("G{$dataRow}", 'center');
                     $set("H{$dataRow}", 'PAX');
                     $bold("H{$dataRow}", 10);
-                    $sheet->getRowDimension($dataRow)->setRowHeight(14);
+                    $sheet->getRowDimension($dataRow)->setRowHeight(16);
                     $dataRow++;
                 }
             }
@@ -3367,9 +3368,9 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
                         ->getColor()->setARGB('FF999999');
                 }
             }
-            $align("B{$dataRow}", 'center', 'center');
-            $align("H{$dataRow}", 'center', 'center');
-            $sheet->getRowDimension($dataRow)->setRowHeight(14);
+            $align("B{$dataRow}", 'center', 'center');  // NO column centered
+            $align("H{$dataRow}", 'center', 'center');  // PAX column centered
+            $sheet->getRowDimension($dataRow)->setRowHeight(15);
 
             $globalSeq++;
             $dataRow++;
