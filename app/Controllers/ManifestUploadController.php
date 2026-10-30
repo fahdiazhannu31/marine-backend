@@ -2455,7 +2455,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             }
 
             // NAMA Marine Logo (right, top)
-            $logoPath = FCPATH . 'assets/namawhite.png';
+            $logoPath = FCPATH . 'assets/nama-marine-logo.png';
             if (file_exists($logoPath)) {
                 $pdf->Image($logoPath, $notesX, $bottomY, 22, 0, 'PNG');
                 $noteY = $bottomY + 13;
