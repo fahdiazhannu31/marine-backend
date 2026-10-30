@@ -219,7 +219,7 @@ class ManifestUploadController extends ApiController
             'la vela'            => ['9D','9E','9F'],
             'la luna'            => ['9A','9B'],
             'la brisa'           => ['1A','1B','1C','1D','1E','1F','1G','1H'],
-            'marina srikandi 2'  => ['1A','1B','1E','1F'],
+            'marina srikandi 2'  => ['1A','1B','1E','1F', '2A','2B','2E','2F'],  // Row 1-2 reserved
         ];
 
         $reservedSeats = [];
@@ -1634,7 +1634,7 @@ class ManifestUploadController extends ApiController
                 'la vela'            => ['9D','9E','9F'],
                 'la luna'            => ['9A','9B'],
                 'la brisa'           => ['1A','1B','1C','1D','1E','1F','1G','1H'],
-                'marina srikandi 2'  => ['1A','1B','1E','1F'],
+                'marina srikandi 2'  => ['1A','1B','1E','1F', '2A','2B','2E','2F'],  // Row 1-2 reserved
             ];
             $boatNameLower  = strtolower($upload['boat_name'] ?? '');
             $reservedAuto   = [];
@@ -2455,7 +2455,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
             }
 
             // NAMA Marine Logo (right, top)
-            $logoPath = FCPATH . 'assets/nama-marine-logo.png';
+            $logoPath = FCPATH . 'assets/namawhite.png';
             if (file_exists($logoPath)) {
                 $pdf->Image($logoPath, $notesX, $bottomY, 22, 0, 'PNG');
                 $noteY = $bottomY + 13;
@@ -3173,7 +3173,7 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
         $fill('A1:L3', 'FF000000');  // Black background for header area
         
         // Logo putih di kiri spanning rows 1-3
-        $logoPath = FCPATH . 'assets/nama-marine-logo.png';
+        $logoPath = FCPATH . 'assets/namawhite.png';
         if (file_exists($logoPath)) {
             $drawing = new \PhpOffice\PhpSpreadsheet\Worksheet\Drawing();
             $drawing->setName('NAMA Marine Logo');
