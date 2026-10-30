@@ -2651,11 +2651,12 @@ public function boardingPass(int $uploadId, array $forceTicketIds = [])
 
         $takenSeatIds = [];
         if ($tripDate) {
-            // 1. Seats taken by OTHER uploads on the same trip_date + boat
+            // 1. Seats taken by OTHER uploads on the same trip_date + boat + direction
             $takenFromOtherUploads = $db->table('manifest_tickets')
                 ->select('seat_id')
                 ->where('trip_date', $tripDate)
                 ->where('boat_id', $upload['boat_id'])
+                ->where('direction', $upload['direction'])  // ADDED: same direction only
                 ->where('upload_id !=', $uploadId)
                 ->where('seat_id IS NOT NULL')
                 ->where('cancelled', 0)
