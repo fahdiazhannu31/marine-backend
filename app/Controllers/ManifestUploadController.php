@@ -1928,10 +1928,10 @@ class ManifestUploadController extends ApiController
         $origin      = $upload['origin']       ?? '';
         $destination = $upload['destination']  ?? '';
 
-        // For RETURN direction, swap origin ↔ destination on boarding pass
-        if ($direction === 'RETURN') {
-            [$origin, $destination] = [$destination, $origin];
-        }
+        // BAGGAGE TAG: NO SWAP needed - use database values as-is
+        // Database already stores the physical trip direction correctly
+        // DEPARTURE: Baywalk → Sepa (origin=Baywalk, destination=Sepa)
+        // RETURN:    Sepa → Baywalk (origin=Sepa, destination=Baywalk)
 
         // ── Boat brand color ─────
         $boatColors = [
