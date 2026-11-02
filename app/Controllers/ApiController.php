@@ -1329,11 +1329,69 @@ class ApiController extends BaseController
             ->where('status', 'ON VERIFICATION')
             ->countAllResults();
 
+        // ── Manifest uploads for today/tomorrow ───────────────────────
+        $manifestUploads = $db->query("
+            SELECT
+                mu.id, mu.schedule_id, mu.boat_id, mu.direction, mu.trip_date,
+                mu.boat_name, mu.origin, mu.destination,
+                mu.captain_name, mu.abk_names, mu.gro_name, mu.kkm_name, mu.guard_name,
+                mu.total_pax, mu.overnight_count, mu.daytrip_count, mu.staff_count, mu.foc_count, mu.vendor_count,
+                mu.status, mu.notes,
+                -- Check-in count
+                COALESCE((
+                    SELECT COUNT(mt.id) FROM manifest_tickets mt
+                    WHERE mt.upload_id = mu.id AND mt.cancelled = 0 AND mt.checked_in = 1
+                ), 0) as checked_in_count,
+                -- Is today or tomorrow?
+                CASE
+                    WHEN mu.trip_date = CURDATE() THEN 1
+                    WHEN mu.trip_date = DATE_ADD(CURDATE(), INTERVAL 1 DAY) THEN 1
+                    ELSE 0
+                END as is_today_or_tomorrow,
+                CASE
+                    WHEN mu.trip_date = CURDATE() THEN 1
+                    ELSE 0
+                END as is_today
+            FROM manifest_uploads mu
+            WHERE mu.trip_date >= CURDATE() AND mu.trip_date <= DATE_ADD(CURDATE(), INTERVAL 1 DAY)
+            ORDER BY mu.trip_date ASC, mu.direction ASC
+        ")->getResultArray();
+
+        $manifestUploadsFormatted = [];
+        foreach ($manifestUploads as $m) {
+            $manifestUploadsFormatted[] = [
+                'id'               => (int) $m['id'],
+                'schedule_id'      => (int) $m['schedule_id'],
+                'boat_id'          => (int) $m['boat_id'],
+                'direction'        => $m['direction'],
+                'trip_date'        => $m['trip_date'],
+                'boat_name'        => $m['boat_name'],
+                'origin'           => $m['origin'],
+                'destination'      => $m['destination'],
+                'captain_name'     => $m['captain_name'],
+                'abk_names'        => $m['abk_names'],
+                'gro_name'         => $m['gro_name'],
+                'kkm_name'         => $m['kkm_name'],
+                'guard_name'       => $m['guard_name'],
+                'total_pax'        => (int) $m['total_pax'],
+                'overnight_count'  => (int) $m['overnight_count'],
+                'daytrip_count'    => (int) $m['daytrip_count'],
+                'staff_count'      => (int) $m['staff_count'],
+                'foc_count'        => (int) $m['foc_count'],
+                'vendor_count'     => (int) $m['vendor_count'],
+                'status'           => $m['status'],
+                'notes'            => $m['notes'],
+                'checked_in_count' => (int) $m['checked_in_count'],
+                'is_today'         => (bool) ($m['is_today'] ?? false),
+            ];
+        }
+
         return $this->jsonResponse([
             'manual_verification_count' => $manualVerificationCount,
             'unassigned_seats'          => $unassignedSeats,
             'capacity_warnings'         => $capacityWarnings,
             'today_tomorrow'            => $todayTomorrow,
+            'manifest_uploads'          => $manifestUploadsFormatted,
         ]);
     }
 
