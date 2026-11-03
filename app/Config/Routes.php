@@ -213,6 +213,13 @@ $routes->post('/api/admin/users/(:num)/unlock',                   'UserManagemen
 $routes->post('/api/admin/users/(:num)/reset-password',           'UserManagementController::resetPassword/$1');
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─── Schedule Recovery (Admin Only) ──────────────────────────────────────────
+$routes->options('/api/admin/schedule-recovery/(:any)', 'ScheduleRecoveryController::options');
+$routes->get('/api/admin/schedule-recovery/orphaned',              'ScheduleRecoveryController::findOrphanedManifests');
+$routes->post('/api/admin/schedule-recovery/restore',              'ScheduleRecoveryController::restoreSchedule');
+$routes->post('/api/admin/schedule-recovery/restore-all',          'ScheduleRecoveryController::restoreAllOrphaned');
+// ─────────────────────────────────────────────────────────────────────────────
+
 // Master data CRUD (boats, packages, schedules)
 $routes->get('/api/admin/boats', 'AdminCrudController::boats');
 $routes->post('/api/admin/boats', 'AdminCrudController::createBoat');
