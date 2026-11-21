@@ -241,6 +241,9 @@ fi
 echo "  → Installing PHP dependencies (Composer)..."
 composer install --no-dev --optimize-autoloader --quiet
 
+# Create writable directories if not exist (CodeIgniter 4)
+mkdir -p writable/{cache,logs,session,uploads,debugbar}
+
 # Set permissions
 chown -R www-data:www-data /var/www/marine-backend
 chmod -R 755 writable/
