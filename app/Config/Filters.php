@@ -43,6 +43,7 @@ class Filters extends BaseFilters
         // Tambahkan filter 'noauth' untuk mencegah akses jika sudah login
         'noauth'      => \App\Filters\NoAuthFilter::class,
         'ratelimit'   => \App\Filters\RateLimitFilter::class,
+        'apiauth'     => \App\Filters\ApiAuthFilter::class,
     ];
 
     /**

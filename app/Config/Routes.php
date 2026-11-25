@@ -130,123 +130,111 @@ $routes->post('/api/payments/manual', 'ApiController::createManualPayment');
 $routes->post('/api/payments/manual/(:num)/proof', 'ApiController::uploadTransferProof/$1');
 
 // Admin API endpoints (protected, requires token + admin role)
-$routes->get('/api/admin/debug-user', 'ApiController::adminDebugUser');
-$routes->get('/api/admin/bookings/settled', 'ApiController::adminSettledBookings');
-$routes->get('/api/admin/boat-seats', 'ApiController::adminBoatSeats');
-$routes->get('/api/admin/booked-seats', 'ApiController::adminBookedSeats');
-$routes->get('/api/admin/bookings/(:num)', 'ApiController::adminBookingDetail/$1');
-$routes->get('/api/admin/manifest', 'ApiController::adminManifest');
-$routes->get('/api/admin/manual-verifications', 'ApiController::adminManualVerifications');
-$routes->post('/api/admin/manual-verifications/(:num)/approve', 'ApiController::adminApproveManualPayment/$1');
-$routes->post('/api/admin/manual-verifications/(:num)/reject', 'ApiController::adminRejectManualPayment/$1');
-$routes->get('/api/admin/ops-overview', 'ApiController::adminOpsOverview');
+$routes->group('', ['filter' => 'apiauth:admin'], function ($routes) {
+    $routes->get('/api/admin/debug-user', 'ApiController::adminDebugUser');
+    $routes->get('/api/admin/bookings/settled', 'ApiController::adminSettledBookings');
+    $routes->get('/api/admin/boat-seats', 'ApiController::adminBoatSeats');
+    $routes->get('/api/admin/booked-seats', 'ApiController::adminBookedSeats');
+    $routes->get('/api/admin/bookings/(:num)', 'ApiController::adminBookingDetail/$1');
+    $routes->get('/api/admin/manifest', 'ApiController::adminManifest');
+    $routes->get('/api/admin/manual-verifications', 'ApiController::adminManualVerifications');
+    $routes->post('/api/admin/manual-verifications/(:num)/approve', 'ApiController::adminApproveManualPayment/$1');
+    $routes->post('/api/admin/manual-verifications/(:num)/reject', 'ApiController::adminRejectManualPayment/$1');
+    $routes->get('/api/admin/ops-overview', 'ApiController::adminOpsOverview');
+    $routes->get('/api/admin/dashboard-stats', 'ApiController::adminDashboardStats');
+    $routes->get('/api/admin/boat-image', 'Admin::getBoatImageApi');
+
+    // ─── Manifest Upload API ─────────────────────────────────────────────────
+    $routes->post('/api/admin/manifest/upload',                          'ManifestUploadController::upload');
+    $routes->get('/api/admin/manifest/uploads',                          'ManifestUploadController::listUploads');
+    $routes->get('/api/admin/manifest/uploads/(:num)',                   'ManifestUploadController::getUpload/$1');
+    $routes->post('/api/admin/manifest/uploads/(:num)/confirm',          'ManifestUploadController::confirmUpload/$1');
+    $routes->post('/api/admin/manifest/uploads/(:num)/force-assign',     'ManifestUploadController::forceAssignSeats/$1');
+    $routes->delete('/api/admin/manifest/uploads/(:num)',                'ManifestUploadController::deleteUpload/$1');
+    $routes->get('/api/admin/manifest/delete-upload/(:num)',             'ManifestUploadController::deleteUpload/$1');
+    $routes->get('/api/admin/manifest/tickets/(:num)',                   'ManifestUploadController::getTickets/$1');
+    $routes->post('/api/admin/manifest/(:num)/tickets',                  'ManifestUploadController::addTicketManual/$1');
+    $routes->get('/api/admin/manifest/baggage/(:num)',                   'ManifestUploadController::listBaggage/$1');
+    $routes->post('/api/admin/manifest/baggage',                         'ManifestUploadController::addBaggage');
+    $routes->put('/api/admin/manifest/baggage/(:num)',                   'ManifestUploadController::updateBaggage/$1');
+    $routes->delete('/api/admin/manifest/baggage/(:num)',                'ManifestUploadController::deleteBaggage/$1');
+    $routes->post('/api/admin/manifest/baggage/(:num)/mark-printed',     'ManifestUploadController::markBaggagePrinted/$1');
+    $routes->get('/api/admin/manifest/baggage-tag-pdf/(:num)',           'ManifestUploadController::baggageTagPdf/$1');
+    $routes->get('/api/admin/manifest/boarding-pass/(:num)',             'ManifestUploadController::boardingPass/$1');
+    $routes->get('/api/admin/manifest/boarding-pass-template/(:num)',    'ManifestUploadController::boardingPassTemplate/$1');
+    $routes->post('/api/admin/manifest/boarding-pass-self-service',      'ManifestUploadController::boardingPassSelfService');
+    $routes->get('/api/admin/manifest/group-qr-codes/(:num)',            'ManifestUploadController::getGroupQrCodes/$1');
+    $routes->post('/api/admin/manifest/send-group-qr-emails',            'ManifestUploadController::sendGroupQrEmails');
+    $routes->get('/api/admin/manifest/qr-image/(:segment)',              'ManifestUploadController::serveQrImage/$1');
+    $routes->get('/api/admin/manifest/boats',                            'ManifestUploadController::listBoats');
+    $routes->put('/api/admin/manifest/boats/(:num)/crew',                'ManifestUploadController::updateBoatCrew/$1');
+    $routes->put('/api/admin/manifest/tickets/(:num)',                   'ManifestUploadController::updateTicket/$1');
+    $routes->post('/api/admin/manifest/tickets/(:num)/toggle-cancel',    'ManifestUploadController::toggleCancel/$1');
+    $routes->delete('/api/admin/manifest/tickets/(:num)',                'ManifestUploadController::deleteTicket/$1');
+    $routes->get('/api/admin/manifest/available-seats/(:num)',           'ManifestUploadController::getAvailableSeats/$1');
+    $routes->get('/api/admin/manifest/group-by-code/(:any)',             'ManifestUploadController::getGroupByCode/$1');
+    $routes->post('/api/admin/manifest/checkin-bulk',                    'ManifestUploadController::checkinBulk');
+    $routes->get('/api/admin/manifest/final/(:num)',                     'ManifestUploadController::getManifestFinal/$1');
+    $routes->get('/api/admin/manifest/export-excel/(:num)',              'ManifestUploadController::exportExcel/$1');
+    $routes->get('/api/admin/manifest/crew-checkins/(:num)',             'ManifestUploadController::getCrewCheckins/$1');
+    $routes->post('/api/admin/manifest/tickets/switch-seat',             'ManifestUploadController::switchSeat');
+
+    // ─── Crew Management ─────────────────────────────────────────────────────
+    $routes->get('/api/admin/crew',                                   'CrewController::index');
+    $routes->post('/api/admin/crew',                                  'CrewController::create');
+    $routes->get('/api/admin/crew/assignments',                       'CrewController::listAssignments');
+    $routes->get('/api/admin/crew/assignments/calendar',              'CrewController::assignmentsCalendar');
+    $routes->post('/api/admin/crew/assignments',                      'CrewController::createAssignment');
+    $routes->delete('/api/admin/crew/assignments/(:num)',             'CrewController::deleteAssignment/$1');
+    $routes->get('/api/admin/crew/checkin-by-qr/(:any)',              'CrewController::checkinByQr/$1');
+    $routes->post('/api/admin/crew/checkin',                          'CrewController::checkin');
+    $routes->get('/api/admin/crew/(:num)',                            'CrewController::show/$1');
+    $routes->put('/api/admin/crew/(:num)',                            'CrewController::update/$1');
+    $routes->delete('/api/admin/crew/(:num)',                         'CrewController::delete/$1');
+    $routes->get('/api/admin/crew/(:num)/qr-pdf',                    'CrewController::qrPdf/$1');
+
+    // ─── User Management ─────────────────────────────────────────────────────
+    $routes->get('/api/admin/users',                                  'UserManagementController::index');
+    $routes->post('/api/admin/users',                                 'UserManagementController::create');
+    $routes->get('/api/admin/users/(:num)',                           'UserManagementController::show/$1');
+    $routes->put('/api/admin/users/(:num)',                           'UserManagementController::update/$1');
+    $routes->delete('/api/admin/users/(:num)',                        'UserManagementController::delete/$1');
+    $routes->post('/api/admin/users/(:num)/unlock',                   'UserManagementController::unlock/$1');
+    $routes->post('/api/admin/users/(:num)/reset-password',           'UserManagementController::resetPassword/$1');
+
+    // ─── Schedule Recovery ────────────────────────────────────────────────────
+    $routes->get('/api/admin/schedule-recovery/orphaned',              'ScheduleRecoveryController::findOrphanedManifests');
+    $routes->post('/api/admin/schedule-recovery/restore',              'ScheduleRecoveryController::restoreSchedule');
+    $routes->post('/api/admin/schedule-recovery/restore-all',          'ScheduleRecoveryController::restoreAllOrphaned');
+
+    // ─── Master data CRUD ─────────────────────────────────────────────────────
+    $routes->get('/api/admin/boats', 'AdminCrudController::boats');
+    $routes->post('/api/admin/boats', 'AdminCrudController::createBoat');
+    $routes->post('/api/admin/boats/(:num)', 'AdminCrudController::updateBoat/$1');
+    $routes->delete('/api/admin/boats/(:num)', 'AdminCrudController::deleteBoat/$1');
+
+    $routes->get('/api/admin/packages', 'AdminCrudController::packagesAdmin');
+    $routes->post('/api/admin/packages', 'AdminCrudController::createPackage');
+    $routes->post('/api/admin/packages/(:num)', 'AdminCrudController::updatePackage/$1');
+    $routes->delete('/api/admin/packages/(:num)', 'AdminCrudController::deletePackage/$1');
+
+    $routes->get('/api/admin/schedules', 'AdminCrudController::schedules');
+    $routes->post('/api/admin/schedules', 'AdminCrudController::createSchedule');
+    $routes->put('/api/admin/schedules/(:num)', 'AdminCrudController::updateSchedule/$1');
+    $routes->delete('/api/admin/schedules/(:num)', 'AdminCrudController::deleteSchedule/$1');
+});
 
 // ─── Manifest Upload API ─────────────────────────────────────────────────────
+// OPTIONS preflight handlers (no auth needed for CORS preflight)
 $routes->options('/api/admin/manifest/(:any)', 'ManifestUploadController::preflight');
-$routes->post('/api/admin/manifest/upload',                          'ManifestUploadController::upload');
-$routes->get('/api/admin/manifest/uploads',                          'ManifestUploadController::listUploads');
-$routes->get('/api/admin/manifest/uploads/(:num)',                   'ManifestUploadController::getUpload/$1');
-$routes->post('/api/admin/manifest/uploads/(:num)/confirm',          'ManifestUploadController::confirmUpload/$1');
-$routes->post('/api/admin/manifest/uploads/(:num)/force-assign',     'ManifestUploadController::forceAssignSeats/$1');
-$routes->delete('/api/admin/manifest/uploads/(:num)',                'ManifestUploadController::deleteUpload/$1');
-$routes->get('/api/admin/manifest/delete-upload/(:num)',             'ManifestUploadController::deleteUpload/$1');
-$routes->get('/api/admin/manifest/tickets/(:num)',                   'ManifestUploadController::getTickets/$1');
-$routes->post('/api/admin/manifest/(:num)/tickets',                  'ManifestUploadController::addTicketManual/$1');
-$routes->get('/api/admin/manifest/baggage/(:num)',                   'ManifestUploadController::listBaggage/$1');
-$routes->post('/api/admin/manifest/baggage',                         'ManifestUploadController::addBaggage');
-$routes->put('/api/admin/manifest/baggage/(:num)',                   'ManifestUploadController::updateBaggage/$1');
-$routes->delete('/api/admin/manifest/baggage/(:num)',                'ManifestUploadController::deleteBaggage/$1');
-$routes->post('/api/admin/manifest/baggage/(:num)/mark-printed',     'ManifestUploadController::markBaggagePrinted/$1');
-$routes->get('/api/admin/manifest/baggage-tag-pdf/(:num)',           'ManifestUploadController::baggageTagPdf/$1');
-$routes->get('/api/admin/manifest/boarding-pass/(:num)',             'ManifestUploadController::boardingPass/$1');
-$routes->get('/api/admin/manifest/boarding-pass-template/(:num)',    'ManifestUploadController::boardingPassTemplate/$1');
-$routes->post('/api/admin/manifest/boarding-pass-self-service',      'ManifestUploadController::boardingPassSelfService');
-$routes->get('/api/admin/manifest/group-qr-codes/(:num)',            'ManifestUploadController::getGroupQrCodes/$1');
-$routes->post('/api/admin/manifest/send-group-qr-emails',            'ManifestUploadController::sendGroupQrEmails');
-$routes->get('/api/admin/manifest/qr-image/(:segment)',              'ManifestUploadController::serveQrImage/$1');
-$routes->get('/api/admin/manifest/boats',                            'ManifestUploadController::listBoats');
-$routes->put('/api/admin/manifest/boats/(:num)/crew',                'ManifestUploadController::updateBoatCrew/$1');
-$routes->put('/api/admin/manifest/tickets/(:num)',                   'ManifestUploadController::updateTicket/$1');
-$routes->post('/api/admin/manifest/tickets/(:num)/toggle-cancel',    'ManifestUploadController::toggleCancel/$1');
-$routes->delete('/api/admin/manifest/tickets/(:num)',                'ManifestUploadController::deleteTicket/$1');
-$routes->get('/api/admin/manifest/available-seats/(:num)',           'ManifestUploadController::getAvailableSeats/$1');
-$routes->get('/api/admin/manifest/group-by-code/(:any)',             'ManifestUploadController::getGroupByCode/$1');
+$routes->options('/api/admin/(:any)', 'ApiController::options');
 
 // Public (no auth) — group boarding pass page
-$routes->options('/api/group-boarding-pass',                         'ManifestUploadController::preflight');
-$routes->get('/api/group-boarding-pass',                             'ManifestUploadController::publicGroupBoardingPass');
-$routes->get('/api/group-boarding-pass/pdf',                         'ManifestUploadController::publicGroupBoardingPassPdf');
-// Keep path param version as fallback
-$routes->options('/api/group-boarding-pass/(:any)',                  'ManifestUploadController::preflight');
-$routes->get('/api/group-boarding-pass/(:any)',                      'ManifestUploadController::publicGroupBoardingPass/$1');
-$routes->post('/api/admin/manifest/checkin-bulk',                    'ManifestUploadController::checkinBulk');
-$routes->get('/api/admin/manifest/final/(:num)',                     'ManifestUploadController::getManifestFinal/$1');
-$routes->get('/api/admin/manifest/export-excel/(:num)',              'ManifestUploadController::exportExcel/$1');
-$routes->get('/api/admin/manifest/crew-checkins/(:num)',             'ManifestUploadController::getCrewCheckins/$1');
-$routes->post('/api/admin/manifest/tickets/switch-seat',             'ManifestUploadController::switchSeat');
-// ─────────────────────────────────────────────────────────────────────────────
-
-// ─── Crew Management ─────────────────────────────────────────────────────────
-$routes->options('/api/admin/crew/(:any)', 'CrewController::preflight');
-$routes->get('/api/admin/crew',                                   'CrewController::index');
-$routes->post('/api/admin/crew',                                  'CrewController::create');
-$routes->get('/api/admin/crew/assignments',                       'CrewController::listAssignments');
-$routes->get('/api/admin/crew/assignments/calendar',              'CrewController::assignmentsCalendar');
-$routes->post('/api/admin/crew/assignments',                      'CrewController::createAssignment');
-$routes->delete('/api/admin/crew/assignments/(:num)',             'CrewController::deleteAssignment/$1');
-$routes->get('/api/admin/crew/checkin-by-qr/(:any)',              'CrewController::checkinByQr/$1');
-$routes->post('/api/admin/crew/checkin',                          'CrewController::checkin');
-$routes->get('/api/admin/crew/(:num)',                            'CrewController::show/$1');
-$routes->put('/api/admin/crew/(:num)',                            'CrewController::update/$1');
-$routes->delete('/api/admin/crew/(:num)',                         'CrewController::delete/$1');
-$routes->get('/api/admin/crew/(:num)/qr-pdf',                    'CrewController::qrPdf/$1');
-// ─────────────────────────────────────────────────────────────────────────────
-
-// ─── User Management (Admin Only) ────────────────────────────────────────────
-$routes->options('/api/admin/users/(:any)', 'UserManagementController::options');
-$routes->get('/api/admin/users',                                  'UserManagementController::index');
-$routes->post('/api/admin/users',                                 'UserManagementController::create');
-$routes->get('/api/admin/users/(:num)',                           'UserManagementController::show/$1');
-$routes->put('/api/admin/users/(:num)',                           'UserManagementController::update/$1');
-$routes->delete('/api/admin/users/(:num)',                        'UserManagementController::delete/$1');
-$routes->post('/api/admin/users/(:num)/unlock',                   'UserManagementController::unlock/$1');
-$routes->post('/api/admin/users/(:num)/reset-password',           'UserManagementController::resetPassword/$1');
-// ─────────────────────────────────────────────────────────────────────────────
-
-// ─── Schedule Recovery (Admin Only) ──────────────────────────────────────────
-$routes->options('/api/admin/schedule-recovery/(:any)', 'ScheduleRecoveryController::options');
-$routes->get('/api/admin/schedule-recovery/orphaned',              'ScheduleRecoveryController::findOrphanedManifests');
-$routes->post('/api/admin/schedule-recovery/restore',              'ScheduleRecoveryController::restoreSchedule');
-$routes->post('/api/admin/schedule-recovery/restore-all',          'ScheduleRecoveryController::restoreAllOrphaned');
-// ─────────────────────────────────────────────────────────────────────────────
-
-// Master data CRUD (boats, packages, schedules)
-$routes->get('/api/admin/boats', 'AdminCrudController::boats');
-$routes->post('/api/admin/boats', 'AdminCrudController::createBoat');
-$routes->post('/api/admin/boats/(:num)', 'AdminCrudController::updateBoat/$1');
-$routes->delete('/api/admin/boats/(:num)', 'AdminCrudController::deleteBoat/$1');
-
-$routes->get('/api/admin/packages', 'AdminCrudController::packagesAdmin');
-$routes->post('/api/admin/packages', 'AdminCrudController::createPackage');
-$routes->post('/api/admin/packages/(:num)', 'AdminCrudController::updatePackage/$1');
-$routes->delete('/api/admin/packages/(:num)', 'AdminCrudController::deletePackage/$1');
-
-$routes->get('/api/admin/schedules', 'AdminCrudController::schedules');
-$routes->post('/api/admin/schedules', 'AdminCrudController::createSchedule');
-$routes->put('/api/admin/schedules/(:num)', 'AdminCrudController::updateSchedule/$1');
-$routes->delete('/api/admin/schedules/(:num)', 'AdminCrudController::deleteSchedule/$1');
-$routes->get('/api/admin/dashboard-stats', 'ApiController::adminDashboardStats');
-$routes->get('/api/home', 'ApiController::home');
-$routes->get('/api/packages', 'ApiController::packages');
-$routes->get('/api/packages/(:num)', 'ApiController::packageDetail/$1');
-$routes->get('/api/schedules/departures', 'ApiController::departures');
-$routes->get('/api/schedules/returns', 'ApiController::returns');
-$routes->get('/api/gallery', 'ApiController::gallery');
-$routes->get('/api/footer', 'ApiController::footer');
-$routes->get('/api/aboutus', 'ApiController::aboutus');
-$routes->get('/api/transactions', 'ApiController::transactions');
-$routes->post('/api/payments', 'ApiController::createPayment');
-$routes->post('/api/payments/manual', 'ApiController::createManualPayment');
+$routes->options('/api/group-boarding-pass',        'ManifestUploadController::preflight');
+$routes->get('/api/group-boarding-pass',             'ManifestUploadController::publicGroupBoardingPass');
+$routes->get('/api/group-boarding-pass/pdf',         'ManifestUploadController::publicGroupBoardingPassPdf');
+$routes->options('/api/group-boarding-pass/(:any)',  'ManifestUploadController::preflight');
+$routes->get('/api/group-boarding-pass/(:any)',      'ManifestUploadController::publicGroupBoardingPass/$1');
 // ─────────────────────────────────────────────────────────────
 $routes->get('/payment-success', 'PaymentController::success');
 $routes->get('/payment-failure', 'PaymentController::failure');
